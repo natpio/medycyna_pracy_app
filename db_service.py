@@ -67,7 +67,7 @@ def add_appointment_to_db(pesel, nip_firmy, typ_badania, notatki, data_wizyty):
     ws.append_row([id_wizyty, str(data_wizyty), pesel, nip_firmy, typ_badania, status, notatki])
     return True, f"Wizyta zaplanowana pomyślnie na dzień {data_wizyty}. ID: {id_wizyty}"
 
-# --- NOWE FUNKCJE DLA LEKARZA ---
+# --- FUNKCJE DLA LEKARZA ---
 def add_orzeczenie_to_db(id_wizyty, pesel, decyzja, data_kolejnego, uwagi):
     """Zapisuje decyzję lekarza i oznacza wizytę jako zakończoną."""
     sh = get_db_connection()
@@ -89,3 +89,12 @@ def add_orzeczenie_to_db(id_wizyty, pesel, decyzja, data_kolejnego, uwagi):
         print(f"Błąd aktualizacji statusu: {e}")
         
     return True, "Orzeczenie wystawione pomyślnie. Wizyta zakończona!"
+
+# --- FUNKCJE DLA KATALOGU STANOWISK ---
+def add_stanowisko_to_db(nip_firmy, nazwa_stanowiska, czynniki):
+    """Dodaje nowe stanowisko do profilu konkretnej firmy."""
+    sh = get_db_connection()
+    ws = sh.worksheet("Stanowiska")
+    
+    ws.append_row([nip_firmy, nazwa_stanowiska, czynniki])
+    return True, f"Stanowisko '{nazwa_stanowiska}' zostało dodane do firmy."
