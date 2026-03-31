@@ -3,6 +3,7 @@ import gspread
 import pandas as pd
 from datetime import datetime
 import hashlib
+import os  # <--- Dodany import do obsługi ścieżek plików
 
 # --- KONFIGURACJA POŁĄCZENIA ---
 @st.cache_resource
@@ -120,3 +121,15 @@ def add_stanowisko_to_db(nip_firmy, nazwa_stanowiska, czynniki):
     
     ws.append_row([str(nip_firmy), nazwa_stanowiska, czynniki])
     return True, f"Stanowisko '{nazwa_stanowiska}' zostało pomyślnie dodane."
+
+# --- MODUŁ WYGLĄDU PRO (Zarządzanie CSS) ---
+
+def apply_pro_style():
+    """Wczytuje profesjonalny plik CSS i ukrywa branding Streamlit."""
+    css_file = "style.css"
+    if os.path.exists(css_file):
+        with open(css_file, 'r', encoding='utf-8') as f:
+            css = f.read()
+        st.markdown(f'<style>\n{css}\n</style>', unsafe_allow_html=True)
+    else:
+        st.warning("⚠️ Błąd wyglądu: Nie znaleziono pliku style.css w głównym katalogu.")
