@@ -1,11 +1,32 @@
 import streamlit as st
-import pandas as pd  # <--- Brakowało tego importu!
-import streamlit.components.v1 as components
+import pandas as pd
+import os
+import urllib.request
+import io
+import qrcode
+from fpdf import FPDF
 from db_service import get_data_as_df
 
 st.set_page_config(page_title="Wydruk Orzeczeń", page_icon="🖨️", layout="centered")
-st.markdown("# 🖨️ Wydruk Orzeczeń z Podpisem Cyfrowym")
-st.write("Wygeneruj oficjalny dokument PDF opatrzony kryptograficznym certyfikatem autentyczności.")
+st.markdown("# 🖨️ Generator Certyfikatów PDF")
+st.write("Wygeneruj nienaruszalny dokument PDF z kodem QR i faksymile podpisu.")
+
+# --- POBIERANIE POLSKICH CZCIONEK ---
+# FPDF wymaga czcionek TTF do obsługi polskich znaków (ą, ę, ł itp.)
+@st.cache_resource
+def load_fonts():
+    font_reg = "Roboto-Regular.ttf"
+    font_bold = "Roboto-Bold.ttf"
+    
+    # Automatyczne pobieranie czcionek z serwerów Google, jeśli ich nie ma w folderze
+    if not os.path.exists(font_reg):
+        urllib.request.urlretrieve("https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Regular.ttf", font_reg)
+    if not os.path.exists(font_bold):
+        urllib.request.urlretrieve("https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Bold.ttf", font_bold)
+    
+    return font_reg, font_bold
+
+font_regular, font_bold = load_fonts()
 
 # 1. Pobieranie danych z bazy
 df_orzeczenia = get_data_as_df("Orzeczenia")
@@ -14,110 +35,131 @@ df_pacjenci = get_data_as_df("Pacjenci")
 df_firmy = get_data_as_df("Firmy")
 
 if df_orzeczenia.empty:
-    st.info("Brak wydanych orzeczeń w bazie. Najpierw wystaw orzeczenie w Panelu Lekarza.")
+    st.info("Brak wydanych orzeczeń w bazie.")
     st.stop()
 
-# 2. Przygotowanie czytelnej listy orzeczeń do wyboru
+# 2. Wybór orzeczenia
 opcje_wydruku = ["--- Wybierz orzeczenie ---"]
 orzeczenia_dict = {}
 
 for idx, orz in df_orzeczenia.iterrows():
     pesel = str(orz['PESEL_Pacjenta'])
-    
-    # Zabezpieczenie na wypadek brakującego pacjenta
     pacjent_df = df_pacjenci[df_pacjenci['PESEL'].astype(str) == pesel]
     imie = pacjent_df.iloc[0]['Imie'] if not pacjent_df.empty else "Nieznane"
     nazwisko = pacjent_df.iloc[0]['Nazwisko'] if not pacjent_df.empty else "Nieznane"
     
     decyzja_skrot = orz['Decyzja'].split(' ')[0]
-    
     etykieta = f"{orz['ID_Orzeczenia']} | {nazwisko} {imie} | {decyzja_skrot}"
     opcje_wydruku.append(etykieta)
     orzeczenia_dict[etykieta] = orz
 
-# 3. Wybór konkretnego dokumentu
 wybrane = st.selectbox("Wybierz dokument z archiwum:", opcje_wydruku)
 
 if wybrane != "--- Wybierz orzeczenie ---":
     orz_data = orzeczenia_dict[wybrane]
-    
-    # Wyciągamy resztę powiązanych danych
     wizyta = df_wizyty[df_wizyty['ID_Wizyty'].astype(str) == str(orz_data['ID_Wizyty'])].iloc[0]
     pacjent = df_pacjenci[df_pacjenci['PESEL'].astype(str) == str(orz_data['PESEL_Pacjenta'])].iloc[0]
     firma = df_firmy[df_firmy['NIP'].astype(str) == str(wizyta['NIP_Firmy'])].iloc[0]
     
-    # Obsługa starszych orzeczeń, które mogły nie mieć podpisu cyfrowego
-    podpis_cyfrowy = orz_data.get('Podpis_Cyfrowy', 'Brak autoryzacji cyfrowej (Stary dokument)')
-    if not isinstance(podpis_cyfrowy, str) or pd.isna(podpis_cyfrowy):
-        podpis_cyfrowy = "Brak autoryzacji cyfrowej (Stary dokument)"
+    podpis_cyfrowy = str(orz_data.get('Podpis_Cyfrowy', 'Brak autoryzacji'))
+    data_wystawienia = f"{orz_data['ID_Orzeczenia'].split('/')[1][:4]}-{orz_data['ID_Orzeczenia'].split('/')[1][4:6]}-{orz_data['ID_Orzeczenia'].split('/')[1][6:8]}"
     
     st.divider()
     
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.success("✅ Dokument jest gotowy do wydruku.")
-        st.write("Kliknij prawym przyciskiem myszy na dokument i wybierz **Drukuj** (lub naciśnij `Ctrl+P`), a następnie wybierz **'Zapisz jako PDF'**.")
-    with col2:
-        st.info(f"🔑 **Status:**\nAutoryzowano")
+    # --- GENEROWANIE PDF ---
+    with st.spinner("Kompilowanie zabezpieczonego dokumentu PDF..."):
+        pdf = FPDF()
+        pdf.add_page()
+        
+        # Wczytanie czcionek
+        pdf.add_font("Roboto", style="", fname=font_regular)
+        pdf.add_font("Roboto", style="B", fname=font_bold)
+        
+        # Datownik (Prawy górny róg)
+        pdf.set_font("Roboto", size=10)
+        pdf.cell(0, 10, f"Luboń, dnia: {data_wystawienia} r.", align="R", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(10)
+        
+        # Tytuł
+        pdf.set_font("Roboto", style="B", size=18)
+        pdf.cell(0, 10, "ORZECZENIE LEKARSKIE", align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Roboto", size=10)
+        pdf.cell(0, 5, f"Nr {orz_data['ID_Orzeczenia']}", align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(10)
+        
+        # Informacje o skierowaniu
+        pdf.set_font("Roboto", size=11)
+        pdf.cell(0, 6, f"Wydane na podstawie skierowania z dnia: {wizyta['DataWizyty']}", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 6, "Wystawionego przez pracodawcę:", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Roboto", style="B", size=11)
+        pdf.cell(0, 6, f"{firma['NazwaFirmy']} (NIP: {firma['NIP']})", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Roboto", size=11)
+        pdf.cell(0, 6, f"{firma['Adres']}", new_x="LMARGIN", new_y="NEXT")
+        
+        pdf.ln(5)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(5)
+        
+        # Informacje o pacjencie
+        pdf.cell(0, 6, f"W wyniku badania profilaktycznego ({wizyta['TypBadania']}) pacjenta:", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Roboto", style="B", size=12)
+        pdf.cell(0, 8, f"Pana/Pani: {pacjent['Imie']} {pacjent['Nazwisko']}", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font("Roboto", size=11)
+        pdf.cell(0, 6, f"PESEL: {pacjent['PESEL']}", new_x="LMARGIN", new_y="NEXT")
+        
+        pdf.ln(5)
+        pdf.line(10, pdf.get_y(), 200, pdf.get_y())
+        pdf.ln(10)
+        
+        # Orzeczenie
+        pdf.set_font("Roboto", style="B", size=14)
+        pdf.cell(0, 10, "ORZEKAM, ŻE BADANY JEST:", align="C", new_x="LMARGIN", new_y="NEXT")
+        pdf.ln(2)
+        
+        # Ramka z decyzją
+        pdf.set_font("Roboto", style="B", size=16)
+        pdf.set_fill_color(240, 240, 240)
+        pdf.cell(0, 15, f"{orz_data['Decyzja'].upper()}", border=1, align="C", fill=True, new_x="LMARGIN", new_y="NEXT")
+        
+        pdf.ln(10)
+        pdf.set_font("Roboto", size=11)
+        pdf.cell(0, 6, "Wobec braku przeciwwskazań zdrowotnych.", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 6, f"Data następnego badania okresowego: {orz_data['DataKolejnegoBadania']}", new_x="LMARGIN", new_y="NEXT")
+        
+        # --- GENEROWANIE KODU QR W LOCIE ---
+        qr = qrcode.make(f"Dokument wydany przez MedycynaPracy Lubon. Certyfikat: {podpis_cyfrowy}")
+        qr_img_bytes = io.BytesIO()
+        qr.save(qr_img_bytes, format='PNG')
+        
+        # Wstawienie kodu QR
+        y_bottom = 220
+        pdf.image(qr_img_bytes, x=15, y=y_bottom, w=35)
+        pdf.set_xy(55, y_bottom + 5)
+        pdf.set_font("Roboto", size=8)
+        pdf.multi_cell(60, 4, f"Zatwierdzono Elektronicznie\nKod autoryzacji:\n{podpis_cyfrowy}\nSkrypt: MedycynaPracy v1.0", align="L")
+        
+        # --- WSTAWIANIE FAKSYMILE (PIECZĄTKI) ---
+        if os.path.exists("pieczatka.png"):
+            pdf.image("pieczatka.png", x=140, y=y_bottom, w=50)
+        else:
+            # Jeśli nie ma wgranego zdjęcia pieczątki, robimy ramkę
+            pdf.set_xy(140, y_bottom + 10)
+            pdf.set_font("Roboto", size=10)
+            pdf.cell(50, 20, "Pieczęć i podpis lekarza", border=1, align="C")
+
+        # Zapisz PDF do bufora pamięci (nie na dysk!)
+        pdf_out = pdf.output()
+        pdf_bytes = bytes(pdf_out)
     
-    # 4. Generowanie estetycznego dokumentu A4 z wizualną "Pieczęcią Cyfrową"
-    data_wystawienia = f"{orz_data['ID_Orzeczenia'].split('/')[1][:4]}-{orz_data['ID_Orzeczenia'].split('/')[1][4:6]}-{orz_data['ID_Orzeczenia'].split('/')[1][6:8]}"
+    # 5. Przycisk pobierania na froncie
+    st.success("✅ Orzeczenie gotowe do wydania.")
+    st.download_button(
+        label="📥 POBIERZ ORZECZENIE (PDF)",
+        data=pdf_bytes,
+        file_name=f"Orzeczenie_{pacjent['Nazwisko']}_{orz_data['ID_Orzeczenia'].replace('/','_')}.pdf",
+        mime="application/pdf",
+        type="primary",
+        use_container_width=True
+    )
     
-    dokument_html = f"""
-    <div style="border: 1px solid #ccc; padding: 40px; margin: 10px; background-color: white; color: black; font-family: 'Arial', sans-serif; box-shadow: 0 4px 8px rgba(0,0,0,0.1); position: relative; min-height: 800px;">
-        
-        <div style="text-align: right; margin-bottom: 20px; font-size: 14px;">
-            Miejscowość, data: <strong>Luboń, {data_wystawienia}</strong>
-        </div>
-        
-        <h2 style="text-align: center; margin-bottom: 20px; color: black; font-size: 22px;">
-            ORZECZENIE LEKARSKIE<br>
-            <span style="font-size: 14px; font-weight: normal; color: #555;">Nr {orz_data['ID_Orzeczenia']}</span>
-        </h2>
-        
-        <p style="font-size: 14px; line-height: 1.6;">Wydane na podstawie skierowania z dnia: <strong>{wizyta['DataWizyty']}</strong></p>
-        <p style="font-size: 14px; line-height: 1.6;">Wystawionego przez pracodawcę:<br>
-        <strong>{firma['NazwaFirmy']}</strong> (NIP: {firma['NIP']})<br>{firma['Adres']}</p>
-        
-        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-        
-        <p style="font-size: 14px; line-height: 1.6;">W wyniku badania profilaktycznego (<strong>{wizyta['TypBadania']}</strong>) pacjenta:</p>
-        <p style="font-size: 16px; margin: 5px 0;">Pana/Pani: <strong>{pacjent['Imie']} {pacjent['Nazwisko']}</strong></p>
-        <p style="font-size: 14px; margin: 5px 0;">PESEL: <strong>{pacjent['PESEL']}</strong></p>
-        
-        <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
-        
-        <h3 style="text-align: center; margin: 20px 0 15px 0; color: black; font-size: 16px;">ORZEKAM, ŻE BADANY JEST:</h3>
-        <div style="text-align: center; border: 2px solid black; padding: 15px; font-size: 18px; font-weight: bold; margin-bottom: 20px; background-color: #fcfcfc;">
-            {orz_data['Decyzja'].upper()}
-        </div>
-        
-        <p style="font-size: 14px;">Wobec braku przeciwwskazań zdrowotnych.<br>
-        Data następnego badania okresowego: <strong>{orz_data['DataKolejnegoBadania']}</strong></p>
-        
-        <div style="margin-top: 60px; display: flex; justify-content: space-between; align-items: flex-end;">
-            
-            <div style="width: 45%; text-align: center;">
-                <p style="font-size: 12px; margin-bottom: 40px;">Potwierdzam odbiór orzeczenia</p>
-                <div style="border-top: 1px dotted black; padding-top: 5px; font-size: 12px;">Podpis pracownika</div>
-            </div>
-            
-            <div style="width: 50%;">
-                <div style="border: 2px solid #2980b9; border-radius: 8px; padding: 10px; background-color: #f4f9fd;">
-                    <div style="display: flex; align-items: center;">
-                        <div style="font-size: 30px; margin-right: 15px;">🛡️</div>
-                        <div>
-                            <p style="margin: 0; font-size: 11px; color: #2980b9; font-weight: bold; text-transform: uppercase;">Zatwierdzono Elektronicznie</p>
-                            <p style="margin: 2px 0; font-size: 13px; font-family: monospace; color: #333;">Certyfikat: <strong>{podpis_cyfrowy}</strong></p>
-                            <p style="margin: 0; font-size: 10px; color: #666;">Dokument wygenerowany w systemie MedycynaPracy v1.0. Nie wymaga podpisu odręcznego lekarza ani tradycyjnej pieczątki.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            
-        </div>
-    </div>
-    """
-    
-    # Wyświetlamy dokument
-    components.html(dokument_html, height=850, scrolling=True)
+    st.info("💡 Wskazówka: Zeskanuj kod QR z wygenerowanego pliku PDF za pomocą aparatu w telefonie!")
