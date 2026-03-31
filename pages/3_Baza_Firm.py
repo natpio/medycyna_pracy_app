@@ -1,5 +1,6 @@
 import streamlit as st
 from db_service import add_company_to_db, get_data_as_df, add_stanowisko_to_db
+from db_service import get_data_as_df, apply_pro_style
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Baza Firm", page_icon="🏢", layout="wide")
