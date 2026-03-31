@@ -6,13 +6,17 @@ import io
 import qrcode
 import datetime
 from fpdf import FPDF
-from db_service import get_data_as_df
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from db_service import get_data_as_df, apply_pro_style
 
+# --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Wydruk Orzeczeń", page_icon="🖨️", layout="centered")
+
+# --- URUCHOMIENIE STYLU PRO ---
+apply_pro_style()
+
 st.markdown("# 🖨️ Generator Certyfikatów PDF")
 st.write("Wygeneruj nienaruszalny dokument PDF z kodem QR i bezpiecznym faksymile podpisu.")
 
