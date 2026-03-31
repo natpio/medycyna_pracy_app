@@ -38,7 +38,7 @@ def live_queue_indicator():
                 </div>
             """, unsafe_allow_html=True)
         else:
-            st.success("🎉 Świtna robota! Brak oczekujących pacjentów w poczekalni.")
+            st.success("🎉 Świetna robota! Brak oczekujących pacjentów w poczekalni.")
     else:
         st.info("Brak zarejestrowanych wizyt w systemie.")
 
