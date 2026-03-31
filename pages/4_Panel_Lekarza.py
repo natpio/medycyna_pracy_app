@@ -2,6 +2,7 @@ import streamlit as st
 import datetime
 import pandas as pd
 from db_service import get_data_as_df, add_orzeczenie_to_db
+from db_service import get_data_as_df, apply_pro_style
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Panel Lekarza", page_icon="👨‍⚕️", layout="wide")
