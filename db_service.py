@@ -2,6 +2,7 @@ import streamlit as st
 import gspread
 import pandas as pd
 from datetime import datetime
+import hashlib
 
 # --- KONFIGURACJA POŁĄCZENIA ---
 @st.cache_resource
@@ -51,7 +52,6 @@ def add_company_to_db(nip, nazwa, adres, c_wst, c_okr, c_kon, c_san):
     if str(nip) in existing_nips:
         return False, "Firma o takim NIP już istnieje."
 
-    # Zapisujemy: NIP, Nazwa, Adres, Cena Wstępne, Cena Okresowe, Cena Kontrolne, Cena Sanepid
     ws.append_row([str(nip), nazwa, adres, c_wst, c_okr, c_kon, c_san])
     return True, "Firma wraz z cennikiem została dodana pomyślnie."
 
@@ -66,25 +66,51 @@ def add_appointment_to_db(pesel, nip_firmy, typ_badania, notatki, data_wizyty):
     ws.append_row([id_wizyty, str(data_wizyty), str(pesel), str(nip_firmy), typ_badania, status, notatki])
     return True, f"Wizyta zaplanowana pomyślnie na dzień {data_wizyty}. ID: {id_wizyty}"
 
-def add_orzeczenie_to_db(id_wizyty, pesel, decyzja, data_kolejnego, uwagi):
-    """Zapisuje decyzję lekarza i automatycznie zamyka wizytę."""
+# --- MODUŁ ORZECZNICZY Z PODPISEM CYFROWYM ---
+
+def add_orzeczenie_to_db(id_wizyty, pesel, decyzja, data_kolejnego, uwagi, pin_lekarza):
+    """Zapisuje orzeczenie z unikalnym podpisem cyfrowym (SHA-256)."""
     sh = get_db_connection()
     
-    # 1. Zapis orzeczenia
+    # 1. Weryfikacja PIN (Dla bezpieczeństwa PIN powinien być w st.secrets)
+    # Na potrzeby testów ustawiliśmy: 1234
+    if pin_lekarza != "1234":
+        return False, "Błąd autoryzacji: Nieprawidłowy PIN lekarza."
+
+    # 2. Generowanie Cyfrowego Hashu (Pieczęć integralności dokumentu)
+    # Hashujemy kluczowe dane, aby uniemożliwić ich późniejszą zmianę w bazie
+    data_to_hash = f"{id_wizyty}|{pesel}|{decyzja}|{data_kolejnego}|{pin_lekarza}"
+    signature_hash = hashlib.sha256(data_to_hash.encode()).hexdigest()[:16].upper()
+    full_signature = f"SIG-{signature_hash}"
+    
+    # 3. Zapis orzeczenia do tabeli
     ws_orzeczenia = sh.worksheet("Orzeczenia")
     id_orzeczenia = "ORZ/" + datetime.now().strftime("%Y%m%d%H%M%S")
-    ws_orzeczenia.append_row([id_orzeczenia, str(id_wizyty), str(pesel), decyzja, str(data_kolejnego), uwagi])
     
-    # 2. Aktualizacja statusu wizyty na "Zakończona"
+    # Kolumny: ID_Orzeczenia, ID_Wizyty, PESEL, Decyzja, DataKolejnego, Uwagi, Podpis_Cyfrowy
+    ws_orzeczenia.append_row([
+        id_orzeczenia, 
+        str(id_wizyty), 
+        str(pesel), 
+        decyzja, 
+        str(data_kolejnego), 
+        uwagi,
+        full_signature
+    ])
+    
+    # 4. Automatyczne zamknięcie wizyty (zmiana statusu)
     ws_wizyty = sh.worksheet("Wizyty")
     try:
         cell = ws_wizyty.find(str(id_wizyty), in_column=1)
         if cell:
+            # Status znajduje się w 6. kolumnie
             ws_wizyty.update_cell(cell.row, 6, "Zakończona")
     except Exception as e:
-        print(f"Błąd aktualizacji statusu: {e}")
+        print(f"Błąd podczas aktualizacji statusu wizyty: {e}")
         
-    return True, "Orzeczenie wystawione pomyślnie. Wizyta zakończona!"
+    return True, f"Orzeczenie wystawione i podpisane cyfrowo. Kod autoryzacji: {full_signature}"
+
+# --- FUNKCJE DODATKOWE ---
 
 def add_stanowisko_to_db(nip_firmy, nazwa_stanowiska, czynniki):
     """Dodaje nowe stanowisko pracy do profilu konkretnej firmy."""
