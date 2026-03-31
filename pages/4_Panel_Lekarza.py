@@ -71,17 +71,14 @@ if wybrana_etykieta != "--- Wybierz pacjenta ---":
             for _, regula in df_slownik.iterrows():
                 czynnik_klucz = str(regula['Czynnik']).lower()
                 if czynnik_klucz in notatki_lcase:
-                    # Dodaj konsultacje (jeśli nie są puste lub nie są kreską)
                     kons = str(regula['Konsultacje_Specjalistyczne'])
                     if kons and kons not in ["—", "nan", "None", ""]:
                         sugerowane_konsultacje.add(kons)
                     
-                    # Dodaj badania diagnostyczne
                     diag = str(regula['Badania_Diagnostyczne'])
                     if diag and diag not in ["—", "nan", "None", ""]:
                         sugerowane_badania.add(diag)
         
-        # Wyświetlanie wyników analizy
         if sugerowane_konsultacje or sugerowane_badania:
             st.warning("⚠️ **Wymagane konsultacje i badania na podstawie czynników szkodliwych:**")
             if sugerowane_konsultacje:
@@ -89,11 +86,11 @@ if wybrana_etykieta != "--- Wybierz pacjenta ---":
             if sugerowane_badania:
                 st.write(f"**Badania diagnostyczne:** {', '.join(sugerowane_badania)}")
         else:
-            st.success("System nie wykrył specyficznych wymogów dla wpisanych czynników szkodliwych.")
+            st.success("System nie wykrył specyficznych wymogów prawnych dla podanych czynników.")
 
     st.divider()
     
-    # --- FORMULARZ WYSTAWIANIA ORZECZENIA ---
+    # --- FORMULARZ WYSTAWIANIA ORZECZENIA Z PODPISEM CYFROWYM ---
     st.markdown("### 📝 Decyzja Orzecznicza")
     with st.form("orzeczenie_form"):
         col_dec, col_date = st.columns(2)
@@ -105,27 +102,36 @@ if wybrana_etykieta != "--- Wybierz pacjenta ---":
             )
         
         with col_date:
-            # Domyślnie ustawiamy datę za 3 lata
             domyslna_data = datetime.date.today() + datetime.timedelta(days=3*365)
             data_kolejnego = st.date_input("Data następnego badania okresowego:", value=domyslna_data)
         
         uwagi_lek = st.text_area("Uwagi lekarza / Ograniczenia / Zalecenia:", height=100)
         
-        submit_btn = st.form_submit_button("Wystaw Orzeczenie i Zakończ Wizytę", type="primary")
+        st.markdown("---")
+        st.subheader("🔐 Autoryzacja i Podpis Elektroniczny")
+        st.write("Wprowadzenie kodu PIN wygeneruje unikalną pieczęć cyfrową (Hash SHA-256) potwierdzającą autentyczność dokumentu.")
+        
+        pin_input = st.text_input("Wprowadź PIN Lekarza:", type="password", help="W celach testowych użyj: 1234")
+
+        submit_btn = st.form_submit_button("Podpisz i Wystaw Orzeczenie", type="primary")
         
         if submit_btn:
-            with st.spinner("Przetwarzanie dokumentacji..."):
-                sukces, message = add_orzeczenie_to_db(
-                    id_wizyty=wizyta['ID_Wizyty'],
-                    pesel=wizyta['PESEL_Pacjenta'],
-                    decyzja=decyzja,
-                    data_kolejnego=data_kolejnego,
-                    uwagi=uwagi_lek
-                )
-            
-            if sukces:
-                st.balloons()
-                st.success(message)
-                st.info("Pacjent został usunięty z poczekalni. Odśwież stronę (F5), aby pobrać kolejną osobę.")
+            if not pin_input:
+                st.error("Błąd: Dokument musi zostać zautoryzowany kodem PIN.")
             else:
-                st.error(f"Błąd: {message}")
+                with st.spinner("Generowanie podpisu cyfrowego i zamykanie wizyty..."):
+                    sukces, message = add_orzeczenie_to_db(
+                        id_wizyty=wizyta['ID_Wizyty'],
+                        pesel=wizyta['PESEL_Pacjenta'],
+                        decyzja=decyzja,
+                        data_kolejnego=data_kolejnego,
+                        uwagi=uwagi_lek,
+                        pin_lekarza=pin_input
+                    )
+                
+                if sukces:
+                    st.balloons()
+                    st.success(message)
+                    st.info("Dokument został zabezpieczony kryptograficznie. Odśwież stronę (F5), aby pobrać kolejnego pacjenta.")
+                else:
+                    st.error(message)
