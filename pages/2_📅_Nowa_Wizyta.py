@@ -1,130 +1,148 @@
 import streamlit as st
 import pandas as pd
-from db_service import get_data_as_df, add_appointment_to_db, add_stanowisko_to_db, apply_pro_style
 import datetime
+# Import funkcji z db_service 
+from db_service import get_data_as_df, add_appointment_to_db, add_stanowisko_to_db, apply_pro_style
 
-# --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="Nowa Wizyta", page_icon="📅")
+# --- 1. KONFIGURACJA STRONY ---
+st.set_page_config(page_title="Nowa Wizyta", page_icon="📅", layout="wide")
 
-# --- URUCHOMIENIE STYLU PRO ---
+# Uruchomienie profesjonalnego stylu CSS 
 apply_pro_style()
 
 st.markdown("# 📅 Rejestracja Wizyty")
-st.write("Kompleksowy kreator: przypisz pacjenta, firmę i wybierz stanowisko.")
+st.write("Wybierz pacjenta, firmę oraz wolny termin w 15-minutowym grafiku.")
 
-# 1. Pobranie danych bazowych
-df_pacjenci = get_data_as_df("Pacjenci")
-df_firmy = get_data_as_df("Firmy")
-df_stanowiska = get_data_as_df("Stanowiska")
+# --- 2. POBIERANIE DANYCH ---
+df_pacjenci = get_data_as_df("Pacjenci") [cite: 1]
+df_firmy = get_data_as_df("Firmy") [cite: 1]
+df_stanowiska = get_data_as_df("Stanowiska") [cite: 1]
+df_wizyty = get_data_as_df("Wizyty") [cite: 1]
 
 if df_pacjenci.empty or df_firmy.empty:
-    st.warning("Uzupełnij najpierw bazę pacjentów i firm, aby móc umawiać wizyty.")
+    st.warning("⚠️ Baza pacjentów lub firm jest pusta. Uzupełnij dane przed rejestracją wizyt.")
     st.stop()
 
-# Tworzymy słowniki z pustą opcją domyślną na start
-pacjent_options = {"--- Wybierz pacjenta ---": None}
-for idx, row in df_pacjenci.iterrows():
-    pacjent_options[f"{row['Nazwisko']} {row['Imie']} (PESEL: {row['PESEL']})"] = row['PESEL']
+# Przygotowanie list do selectboxów
+pacjent_options = {f"{row['Nazwisko']} {row['Imie']} (PESEL: {row['PESEL']})": row['PESEL'] for _, row in df_pacjenci.iterrows()}
+firma_options = {f"{row['NazwaFirmy']} (NIP: {row['NIP']})": row['NIP'] for _, row in df_firmy.iterrows()}
 
-firma_options = {"--- Wybierz firmę ---": None}
-for idx, row in df_firmy.iterrows():
-    firma_options[f"{row['NazwaFirmy']} (NIP: {row['NIP']})"] = row['NIP']
-
-# SEKCJA 1: Wybór podstawowy
+# --- 3. SEKCJA WYBORU PACJENTA I FIRMY ---
 st.subheader("1. Kto i Gdzie?")
 col1, col2 = st.columns(2)
+
 with col1:
-    wybrany_pacjent = st.selectbox("Wybierz Pacjenta", options=list(pacjent_options.keys()))
+    wybrany_label_pacjent = st.selectbox("Wybierz Pacjenta:", options=["--- Wybierz pacjenta ---"] + list(pacjent_options.keys()))
 with col2:
-    wybrana_firma = st.selectbox("Wybierz Firmę kierującą", options=list(firma_options.keys()))
-
-pesel_to_save = pacjent_options[wybrany_pacjent]
-nip_to_save = firma_options[wybrana_firma]
+    wybrany_label_firma = st.selectbox("Wybierz Firmę kierującą:", options=["--- Wybierz firmę ---"] + list(firma_options.keys()))
 
 st.divider()
 
-# SEKCJA 2: Dynamiczny wybór stanowiska (pojawia się dopiero po wybraniu firmy!)
-wybrane_stanowisko = "--- Wybierz stanowisko ---"
-nowe_stanowisko_nazwa = ""
-czynniki_domyslne = ""
+# --- 4. SEKCJA TERMINU I SLOTÓW ---
+st.subheader("2. Termin i Godzina")
+c_date, c_time = st.columns(2)
 
-if nip_to_save:
-    st.subheader("2. Stanowisko i Zagrożenia")
+with c_date:
+    data_wizyty = st.date_input("Data wizyty:", min_value=datetime.date.today(), value=datetime.date.today())
+
+# Generator slotów (08:00 - 16:00, co 15 minut)
+def get_available_slots(selected_date, df_existing_wizyty):
+    all_slots = []
+    start = datetime.datetime.combine(selected_date, datetime.time(8, 0))
+    end = datetime.datetime.combine(selected_date, datetime.time(16, 0))
     
-    # Szukamy stanowisk tylko dla wybranej firmy
-    stanowiska_firmy = df_stanowiska[df_stanowiska['NIP_Firmy'].astype(str) == str(nip_to_save)] if not df_stanowiska.empty else pd.DataFrame()
+    current = start
+    while current < end:
+        all_slots.append(current.strftime("%H:%M"))
+        current += datetime.timedelta(minutes=15)
     
-    opcje_stanowisk = ["--- Wybierz stanowisko ---"] 
+    # Pobieranie zajętych slotów z bazy dla wybranego dnia
+    zajete_godziny = []
+    if not df_existing_wizyty.empty and 'Godzina' in df_existing_wizyty.columns:
+        mask = df_existing_wizyty['DataWizyty'].astype(str) == str(selected_date)
+        zajete_godziny = df_existing_wizyty[mask]['Godzina'].astype(str).tolist()
+    
+    # Filtrowanie wolnych slotów
+    return [slot for slot in all_slots if slot not in zajete_godziny]
+
+wolne_sloty = get_available_slots(data_wizyty, df_wizyty)
+
+with c_time:
+    if not wolne_sloty:
+        st.error("Brak wolnych terminów w wybranym dniu.")
+        wybrana_godzina = None
+    else:
+        wybrana_godzina = st.selectbox(f"Dostępne godziny ({len(wolne_sloty)} wolnych):", wolne_sloty)
+
+st.divider()
+
+# --- 5. SEKCJA STANOWISKA I ZAGROŻEŃ ---
+nip_firmy = firma_options.get(wybrany_label_firma)
+pesel_pacjenta = pacjent_options.get(wybrany_label_pacjent)
+
+if nip_firmy:
+    st.subheader("3. Stanowisko i Zagrożenia")
+    
+    # Filtrowanie stanowisk przypisanych do tej firmy
+    stanowiska_firmy = df_stanowiska[df_stanowiska['NIP_Firmy'].astype(str) == str(nip_firmy)] if not df_stanowiska.empty else pd.DataFrame()
+    
+    opcje_st = ["--- Wybierz stanowisko ---"]
     if not stanowiska_firmy.empty:
-        opcje_stanowisk += stanowiska_firmy['NazwaStanowiska'].tolist()
-    opcje_stanowisk += ["➕ INNE (Stwórz nowe stanowisko)"]
+        opcje_st += stanowiska_firmy['NazwaStanowiska'].tolist()
+    opcje_st += ["➕ DODAJ NOWE STANOWISKO"]
     
-    wybrane_stanowisko = st.selectbox("Stanowisko pracy ze skierowania:", opcje_stanowisk)
+    wybrane_st = st.selectbox("Stanowisko pracy:", opcje_st)
     
-    # KREATOR NOWEGO STANOWISKA NA ŻYWO
-    if wybrane_stanowisko == "➕ INNE (Stwórz nowe stanowisko)":
-        st.info("💡 To stanowisko zostanie automatycznie zapisane w słowniku tej firmy na przyszłość.")
-        nowe_stanowisko_nazwa = st.text_input("Nazwa nowego stanowiska (np. Kierowca C+E):")
-        czynniki_domyslne = st.text_area("Wypisz czynniki szkodliwe i uciążliwe ze skierowania:", height=100)
+    final_stanowisko = ""
+    final_czynniki = ""
     
-    # POBIERANIE ISTNIEJĄCEGO STANOWISKA
-    elif wybrane_stanowisko != "--- Wybierz stanowisko ---":
-        wiersz = stanowiska_firmy[stanowiska_firmy['NazwaStanowiska'] == wybrane_stanowisko].iloc[0]
-        czynniki_z_bazy = wiersz['CzynnikiSzkodliwe']
-        # Pozwalamy recepcji podejrzeć i ewentualnie dopisać coś ekstra na ten konkretny raz
-        czynniki_domyslne = st.text_area("Zagrożenia na tym stanowisku (możesz edytować):", value=czynniki_z_bazy, height=100)
+    if wybrane_st == "➕ DODAJ NOWE STANOWISKO":
+        final_stanowisko = st.text_input("Nazwa nowego stanowiska:")
+        final_czynniki = st.text_area("Wpisz czynniki szkodliwe (oddzielone przecinkami):")
+        st.info("💡 To stanowisko zostanie zapisane w słowniku firmy po zatwierdzeniu wizyty.")
+    elif wybrane_st != "--- Wybierz stanowisko ---":
+        row_st = stanowiska_firmy[stanowiska_firmy['NazwaStanowiska'] == wybrane_st].iloc[0]
+        final_stanowisko = wybrane_st
+        final_czynniki = st.text_area("Czynniki szkodliwe (możesz edytować):", value=row_st['CzynnikiSzkodliwe'])
 
-st.divider()
-
-# SEKCJA 3: Parametry wizyty
-st.subheader("3. Szczegóły skierowania")
-col_date, col_type = st.columns(2)
-with col_date:
-    data_wizyty = st.date_input("Termin wizyty:", value=datetime.date.today())
-with col_type:
+    st.divider()
+    
+    # --- 6. TYP BADANIA I ZAPIS ---
+    st.subheader("4. Rodzaj badania")
     typ_badania = st.radio(
-        "Typ badań:",
+        "Wybierz typ badania profilaktycznego:",
         ("Wstępne", "Okresowe", "Kontrolne", "Sanitarno-Epidemiologiczne"),
         horizontal=True
     )
 
-st.write("") # Trochę oddechu w UI
-
-# PRZYCISK ZAPISU (Działa niezależnie od formularza)
-if st.button("Zatwierdź Wizytę i Zapisz", type="primary", use_container_width=True):
-    # Logika sprawdzająca, czy recepcjonistka wszystko wypełniła
-    if not pesel_to_save or not nip_to_save:
-        st.error("Błąd: Wybierz pacjenta oraz firmę z list!")
-    elif nip_to_save and wybrane_stanowisko == "--- Wybierz stanowisko ---":
-        st.error("Błąd: Wybierz stanowisko pracy ze słownika lub stwórz nowe!")
-    elif wybrane_stanowisko == "➕ INNE (Stwórz nowe stanowisko)" and (not nowe_stanowisko_nazwa or not czynniki_domyslne):
-        st.error("Błąd: Wpisz nazwę nowego stanowiska i jego czynniki szkodliwe!")
-    else:
-        with st.spinner("Zapisywanie w systemie..."):
-            
-            # Krok A: Jeśli tworzymy nowe stanowisko, wrzucamy je najpierw "w tło" do bazy firm
-            if wybrane_stanowisko == "➕ INNE (Stwórz nowe stanowisko)":
-                add_stanowisko_to_db(nip_to_save, nowe_stanowisko_nazwa, czynniki_domyslne)
-                nazwa_stanowiska_do_orzeczenia = nowe_stanowisko_nazwa
-            else:
-                nazwa_stanowiska_do_orzeczenia = wybrane_stanowisko
-                
-            # Przygotowujemy sprytną notatkę dla lekarza (Stanowisko + Czynniki)
-            kompletne_notatki = f"Stanowisko: {nazwa_stanowiska_do_orzeczenia}\nZagrożenia: {czynniki_domyslne}"
-            
-            # Krok B: Zapisujemy samą wizytę
-            success, message = add_appointment_to_db(
-                pesel=pesel_to_save, 
-                nip_firmy=nip_to_save, 
-                typ_badania=typ_badania, 
-                notatki=kompletne_notatki,
-                data_wizyty=data_wizyty
-            )
-        
-        if success:
-            st.balloons()
-            st.success(message)
-            if wybrane_stanowisko == "➕ INNE (Stwórz nowe stanowisko)":
-                st.info(f"✨ Dodatkowo nowe stanowisko '{nowe_stanowisko_nazwa}' zostało pomyślnie dopisane do słownika tej firmy!")
+    if st.button("ZAREJESTRUJ WIZYTĘ", type="primary", use_container_width=True):
+        if not pesel_pacjenta:
+            st.error("Proszę wybrać pacjenta.")
+        elif not wybrana_godzina:
+            st.error("Proszę wybrać godzinę wizyty.")
+        elif wybrane_st == "--- Wybierz stanowisko ---" or (wybrane_st == "➕ DODAJ NOWE STANOWISKO" and not final_stanowisko):
+            st.error("Proszę określić stanowisko pracy.")
         else:
-            st.error(message)
+            with st.spinner("Zapisywanie wizyty w systemie..."):
+                # Jeśli wybrano nowe stanowisko, zapisz je w bazie firm 
+                if wybrane_st == "➕ DODAJ NOWE STANOWISKO":
+                    add_stanowisko_to_db(nip_firmy, final_stanowisko, final_czynniki) [cite: 1]
+                
+                notatki_lekarz = f"Stanowisko: {final_stanowisko}\nZagrożenia: {final_czynniki}"
+                
+                # Dodanie wizyty z uwzględnieniem slotu czasowego 
+                sukces, msg = add_appointment_to_db(
+                    pesel=pesel_pacjenta,
+                    nip_firmy=nip_firmy,
+                    typ_badania=typ_badania,
+                    notatki=notatki_lekarz,
+                    data_wizyty=data_wizyty,
+                    godzina=wybrana_godzina
+                ) [cite: 1]
+                
+                if sukces:
+                    st.balloons()
+                    st.success(f"✅ Sukces! {msg}")
+                    st.info(f"Termin {data_wizyty} o godz. {wybrana_godzina} został zarezerwowany.")
+                else:
+                    st.error(msg)
