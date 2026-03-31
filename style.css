@@ -1,40 +1,66 @@
-/* 1. Całkowite ukrycie górnego paska Streamlit (hamburger, deploy, avatar) */
-[data-testid="stHeader"] {
-    display: none !important;
-    height: 0px !important;
+/* Import profesjonalnej czcionki UI (Inter) */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+/* Globalna zmiana czcionki na Inter */
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif !important;
 }
 
-/* 2. Ukrycie stopki "Made with Streamlit" */
-footer {
-    visibility: hidden;
-}
+/* Ukrycie brandingu */
+[data-testid="stHeader"] { display: none !important; height: 0px !important; }
+footer { visibility: hidden; }
 
-/* 3. Zmniejszenie gigantycznego białego marginesu na górze i poszerzenie aplikacji */
+/* Poszerzenie aplikacji i oddech */
 .block-container {
     padding-top: 2rem !important;
     padding-bottom: 2rem !important;
     max-width: 95% !important;
 }
 
-/* 4. Stylowanie kart statystyk (Metrics) - efekt PRO */
+/* Luksusowe karty metryk (Metrics) z efektem unoszenia */
 [data-testid="stMetric"] {
     background-color: #ffffff;
-    border: 1px solid #e2e8f0;
-    padding: 15px;
-    border-radius: 10px;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
-    border-left: 5px solid #1E3A8A; /* Granatowy akcent z lewej strony */
+    border: 1px solid #f1f5f9;
+    padding: 20px;
+    border-radius: 16px; /* Bardziej miękkie rogi */
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    border-left: 6px solid #1E3A8A;
+    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
 }
 
-/* 5. Stylowanie Przycisków Akcji */
+[data-testid="stMetric"]:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+/* Zmiana wyglądu etykiet metryk na bardziej dyskretne */
+[data-testid="stMetricLabel"] {
+    color: #64748b !important;
+    font-weight: 500 !important;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-size: 0.85rem !important;
+}
+
+/* Wartości metryk - mocniejsze i grubsze */
+[data-testid="stMetricValue"] {
+    font-weight: 700 !important;
+    color: #0f172a !important;
+}
+
+/* Przycisk akcji Premium */
 button[kind="primary"] {
-    border-radius: 8px !important;
-    font-weight: bold !important;
+    background: linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%) !important;
+    border: none !important;
+    border-radius: 12px !important;
+    font-weight: 600 !important;
     letter-spacing: 0.5px !important;
+    padding: 0.5rem 1rem !important;
     transition: all 0.3s ease !important;
+    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2) !important;
 }
 
 button[kind="primary"]:hover {
     transform: translateY(-2px) !important;
-    box-shadow: 0 10px 15px -3px rgba(30, 58, 138, 0.2) !important;
+    box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3) !important;
 }
