@@ -13,10 +13,20 @@ st.set_page_config(
 # Wstrzyknięcie stylów CSS (Sidebar, Karty, Tabela)
 apply_pro_style()
 
-# --- 2. PASEK BOCZNY ---
+# --- 2. PASEK BOCZNY (SIDEBAR) ---
 with st.sidebar:
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    # Logo na dole sidebaru (Pamiętaj o wgraniu logo_firma.png na GitHub)
+    # --- NOWE LOGO NA GÓRZE (NAD MENU) ---
+    st.markdown(f"""
+        <div style="text-align: center; padding: 10px 0px 30px 0px;">
+            <img src="https://raw.githubusercontent.com/natpio/medycyna_pracy_app/main/logo_jarek2.png" 
+                 width="180" 
+                 style="filter: drop-shadow(0px 4px 8px rgba(0,0,0,0.2));">
+        </div>
+    """, unsafe_allow_html=True)
+
+    # Tutaj Streamlit automatycznie wstawi listę stron (pages/...)
+
+    # LOGO TWÓRCÓW NA DOLE SIDEBARU
     st.markdown(f"""
         <div class="sidebar-footer">
             <img src="https://raw.githubusercontent.com/natpio/medycyna_pracy_app/main/logo_firma.png" width="38" style="border-radius: 8px;">
@@ -49,7 +59,7 @@ def render_premium_card(title, value, icon, badge_text, badge_color, badge_bg):
     st.markdown(card_html, unsafe_allow_html=True)
 
 def render_activity_table(df):
-    """Renderuje tabelę aktywności - wersja 'Bulletproof'."""
+    """Renderuje tabelę aktywności - wersja 'Bulletproof' (naprawione wyświetlanie)."""
     if df is None or df.empty:
         st.markdown("<p style='color: #64748b; padding: 20px;'>Brak danych o wizytach.</p>", unsafe_allow_html=True)
         return
@@ -87,11 +97,9 @@ def render_activity_table(df):
             </td>
         </tr>
         """
-        html += row_html.replace('\n', '').strip() # Usuwamy entery i spacje z wiersza
+        html += row_html.replace('\n', '').strip()
 
     html += '</tbody></table></div>'
-    
-    # Wyświetlamy jako jeden blok bez żadnych dodatkowych spacji Streamlitowych
     st.write(html, unsafe_allow_html=True)
 
 # --- 4. LOGIKA POBIERANIA DANYCH ---
@@ -105,7 +113,6 @@ except:
 
 # --- 5. WIDOK GŁÓWNY ---
 
-# Nagłówek Dashboardu
 st.markdown("""
     <div style="margin-bottom: 2.5rem;">
         <h1 style="font-weight: 800; color: #0f172a; letter-spacing: -1.8px; margin-bottom: 4px; font-size: 2.8rem;">Dashboard</h1>
@@ -126,13 +133,12 @@ with c3:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# Dolna sekcja: Tabela i Szybkie Akcje
+# Dolna sekcja
 col_l, col_r = st.columns([2.2, 1])
 
 with col_l:
     st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Ostatnie aktywności</h4>", unsafe_allow_html=True)
     if not df_wizyty.empty:
-        # Sortujemy i bierzemy ostatnie 6
         render_activity_table(df_wizyty.tail(6).iloc[::-1])
     else:
         st.info("Brak aktywności.")
