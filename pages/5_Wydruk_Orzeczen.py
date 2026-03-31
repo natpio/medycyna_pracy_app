@@ -10,6 +10,7 @@ from db_service import get_data_as_df
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
+from db_service import get_data_as_df, apply_pro_style
 
 st.set_page_config(page_title="Wydruk Orzeczeń", page_icon="🖨️", layout="centered")
 st.markdown("# 🖨️ Generator Certyfikatów PDF")
