@@ -5,6 +5,14 @@ from datetime import datetime
 import hashlib
 import os
 import base64
+import time
+
+# --- WYMUSZENIE POLSKIEJ STREFY CZASOWEJ W CHMURZE ---
+os.environ['TZ'] = 'Europe/Warsaw'
+try:
+    time.tzset()  # Aktualizuje czas systemowy dla tego skryptu (działa m.in. na Streamlit Cloud / Linux)
+except AttributeError:
+    pass  # Ignoruje błąd na lokalnym systemie Windows (Windows domyślnie używa czasu systemowego)
 
 # --- KONFIGURACJA POŁĄCZENIA ---
 @st.cache_resource
@@ -63,6 +71,7 @@ def add_appointment_to_db(pesel, nip_firmy, typ_badania, notatki, data_wizyty, g
     sh = get_db_connection()
     ws = sh.worksheet("Wizyty")
     
+    # Pobieramy obecny czas - dzięki time.tzset() będzie to zawsze czas polski!
     id_wizyty = datetime.now().strftime("%Y%m%d%H%M%S")
     status = "Zaplanowana"
     
