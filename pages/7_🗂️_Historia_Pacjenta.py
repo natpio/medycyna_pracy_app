@@ -1,9 +1,13 @@
 import streamlit as st
 import pandas as pd
-from db_service import get_data_as_df
 from db_service import get_data_as_df, apply_pro_style
 
+# --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Karta Pacjenta", page_icon="🗂️", layout="wide")
+
+# --- URUCHOMIENIE STYLU PRO ---
+apply_pro_style()
+
 st.markdown("# 🗂️ Elektroniczna Dokumentacja Medyczna (EDM)")
 st.write("Wyszukaj pacjenta, aby przejrzeć pełną historię badań i wydanych orzeczeń.")
 
