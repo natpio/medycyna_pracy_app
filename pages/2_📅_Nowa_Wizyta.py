@@ -1,10 +1,14 @@
 import streamlit as st
 import pandas as pd
-from db_service import get_data_as_df, add_appointment_to_db, add_stanowisko_to_db
-from db_service import get_data_as_df, apply_pro_style
+from db_service import get_data_as_df, add_appointment_to_db, add_stanowisko_to_db, apply_pro_style
 import datetime
 
+# --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Nowa Wizyta", page_icon="📅")
+
+# --- URUCHOMIENIE STYLU PRO ---
+apply_pro_style()
+
 st.markdown("# 📅 Rejestracja Wizyty")
 st.write("Kompleksowy kreator: przypisz pacjenta, firmę i wybierz stanowisko.")
 
