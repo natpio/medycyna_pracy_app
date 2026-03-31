@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-from db_service import get_data_as_df, apply_pro_style
+# Importowanie funkcji z pliku db_service.py
+from db_service import get_data_as_df, apply_pro_style 
 
 # --- 1. KONFIGURACJA STRONY ---
 st.set_page_config(
@@ -10,13 +11,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Wstrzyknięcie stylów CSS (Sidebar, Karty, Tabela)
-apply_pro_style() [cite: 1]
+# Wstrzyknięcie stylów CSS z pliku style.css za pośrednictwem db_service
+apply_pro_style()
 
 # --- 2. PASEK BOCZNY ---
 with st.sidebar:
     st.markdown("<br><br>", unsafe_allow_html=True)
-    # Logo na dole sidebaru
+    # Wyświetlanie logo i wersji systemu w stopce menu
     st.markdown(f"""
         <div class="sidebar-footer">
             <img src="https://raw.githubusercontent.com/natpio/medycyna_pracy_app/main/logo_firma.png" width="38" style="border-radius: 8px;">
@@ -25,12 +26,12 @@ with st.sidebar:
                 v2.1 | Premium Edition
             </div>
         </div>
-    """, unsafe_allow_html=True) [cite: 1]
+    """, unsafe_allow_html=True)
 
-# --- 3. KOMPONENTY UI (KARTY I TABELA) ---
+# --- 3. KOMPONENTY UI ---
 
 def render_premium_card(title, value, icon, badge_text, badge_color, badge_bg):
-    """Renderuje karty statystyk (KPI)."""
+    """Renderuje karty statystyk (KPI) z niestandardowym HTML."""
     card_html = f"""
     <div class="premium-card">
         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -46,10 +47,10 @@ def render_premium_card(title, value, icon, badge_text, badge_color, badge_bg):
         </div>
     </div>
     """
-    st.markdown(card_html, unsafe_allow_html=True) [cite: 1]
+    st.markdown(card_html, unsafe_allow_html=True)
 
 def render_activity_table_pro(df):
-    """Renderuje nowoczesną tabelę z połączonymi danymi pacjenta i firmy."""
+    """Renderuje ulepszoną tabelę aktywności z danymi pacjentów i firm."""
     if df is None or df.empty:
         st.markdown("<p style='color: #64748b; padding: 20px;'>Brak ostatnich aktywności.</p>", unsafe_allow_html=True)
         return
@@ -70,7 +71,7 @@ def render_activity_table_pro(df):
         typ = str(row['TypBadania'])
         litera = typ[0] if typ else "?"
         
-        # Obsługa nazwisk i firm (pobranych z merge)
+        # Dane z połączonych tabel
         pacjent_name = f"{row.get('Imie', '')} {row.get('Nazwisko', 'Nieznany')}"
         firma_name = row.get('NazwaFirmy', 'Brak danych firmy')
         
@@ -97,28 +98,27 @@ def render_activity_table_pro(df):
         html += row_html.replace('\n', '').strip()
 
     html += '</tbody></table></div>'
-    st.write(html, unsafe_allow_html=True) [cite: 1]
+    st.write(html, unsafe_allow_html=True)
 
-# --- 4. LOGIKA POBIERANIA I ŁĄCZENIA DANYCH ---
+# --- 4. LOGIKA DANYCH (POBIERANIE I MERGE) ---
 try:
     df_wizyty = get_data_as_df("Wizyty")
     df_pacjenci = get_data_as_df("Pacjenci")
-    df_firmy = get_data_as_df("Firmy") [cite: 1]
+    df_firmy = get_data_as_df("Firmy")
 
-    # Przygotowanie tabeli do wyświetlenia (Merge)
     if not df_wizyty.empty:
-        # Konwersja kluczy na string dla pewności połączenia
+        # Konwersja typów dla poprawnego łączenia
         df_wizyty['PESEL_Pacjenta'] = df_wizyty['PESEL_Pacjenta'].astype(str)
         df_pacjenci['PESEL'] = df_pacjenci['PESEL'].astype(str)
         df_wizyty['NIP_Firmy'] = df_wizyty['NIP_Firmy'].astype(str)
         df_firmy['NIP'] = df_firmy['NIP'].astype(str)
 
+        # Łączenie wizyt z nazwami pacjentów i firm
         df_full = df_wizyty.merge(df_pacjenci[['PESEL', 'Imie', 'Nazwisko']], 
                                  left_on='PESEL_Pacjenta', right_on='PESEL', how='left')
         df_full = df_full.merge(df_firmy[['NIP', 'NazwaFirmy']], 
                                left_on='NIP_Firmy', right_on='NIP', how='left')
         
-        # Ostatnie 6 aktywności (najnowsze na górze)
         df_activity = df_full.tail(6).iloc[::-1]
     else:
         df_activity = pd.DataFrame()
@@ -128,15 +128,14 @@ except Exception as e:
 
 # --- 5. WIDOK GŁÓWNY ---
 
-# Nagłówek Dashboardu
 st.markdown("""
     <div style="margin-bottom: 2.5rem;">
         <h1 style="font-weight: 800; color: #0f172a; letter-spacing: -1.8px; margin-bottom: 4px; font-size: 2.8rem;">Dashboard</h1>
         <p style="color: #64748b; font-size: 1.15rem; font-weight: 500;">Medycyna Pracy | Panel Zarządzania</p>
     </div>
-""", unsafe_allow_html=True) [cite: 1]
+""", unsafe_allow_html=True)
 
-# Górne karty KPI
+# Sekcja kart KPI
 c1, c2, c3 = st.columns(3)
 with c1:
     render_premium_card("Pacjenci", str(len(df_pacjenci)), "👥", "Aktywni", "#059669", "#d1fae5")
@@ -145,11 +144,11 @@ with c2:
 with c3:
     dzis = str(pd.Timestamp.today().date())
     wiz_dzis = len(df_wizyty[df_wizyty['DataWizyty'].astype(str) == dzis]) if not df_wizyty.empty else 0
-    render_premium_card("Wizyty na dziś", str(wiz_dzis), "📅", "Dzisiaj", "#ea580c", "#ffedd5") [cite: 1]
+    render_premium_card("Wizyty na dziś", str(wiz_dzis), "📅", "Dzisiaj", "#ea580c", "#ffedd5")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# Dolna sekcja: Tabela i Szybkie Akcje
+# Podział na tabelę i przyciski akcji
 col_l, col_r = st.columns([2.2, 1])
 
 with col_l:
@@ -172,4 +171,4 @@ with col_r:
                 💡 <b>System zautoryzowany:</b><br>Zabezpieczone połączenie z bazą i modułem orzeczeń.
             </p>
         </div>
-    """, unsafe_allow_html=True) [cite: 1]
+    """, unsafe_allow_html=True)
