@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 import hashlib
 import os
+import base64
 
 # --- KONFIGURACJA POŁĄCZENIA ---
 @st.cache_resource
@@ -119,13 +120,59 @@ def add_stanowisko_to_db(nip_firmy, nazwa_stanowiska, czynniki):
     st.cache_data.clear()
     return True, f"Stanowisko '{nazwa_stanowiska}' zostało pomyślnie dodane."
 
-# --- MODUŁ WYGLĄDU PRO (Zarządzanie CSS) ---
+# --- MODUŁ WYGLĄDU PRO (Zarządzanie CSS i LIVE UPDATES) ---
+
+@st.fragment(run_every="10s")
+def render_live_badge():
+    """Automatycznie odświeżany skrypt sprawdzający kolejkę (uruchamia się co 10 sek w tle)."""
+    df_wizyty = get_data_as_df("Wizyty")
+    if not df_wizyty.empty:
+        # Liczymy tylko wizyty ze statusem "Zaplanowana"
+        oczekujacy = len(df_wizyty[df_wizyty['Status'] == 'Zaplanowana'])
+        if oczekujacy > 0:
+            # Dynamiczny CSS dodający licznik (badge) na pasku bocznym
+            css = f"""
+            <style>
+            [data-testid="stSidebarNav"] a[href*="Panel_Lekarza"] span::after {{
+                content: "{oczekujacy}";
+                background-color: #3b82f6;
+                color: white;
+                border-radius: 12px;
+                padding: 2px 8px;
+                font-size: 0.75rem;
+                margin-left: 10px;
+                font-weight: 800;
+                box-shadow: 0 0 5px rgba(59, 130, 246, 0.5);
+            }}
+            </style>
+            """
+            st.markdown(css, unsafe_allow_html=True)
+        else:
+            # Usuwamy licznik, gdy poczekalnia jest pusta
+            st.markdown('<style>[data-testid="stSidebarNav"] a[href*="Panel_Lekarza"] span::after { content: none; }</style>', unsafe_allow_html=True)
 
 def apply_pro_style():
-    """Wczytuje profesjonalny plik CSS i ukrywa branding Streamlit."""
-    # 1. Wymuszenie wyświetlenia loga na samej górze paska bocznego
-    if os.path.exists("logo_jarek2.png"):
-        st.sidebar.image("logo_jarek2.png", use_container_width=True)
+    """Wczytuje profesjonalny plik CSS, logo i uruchamia nasłuch kolejki."""
+    # 1. Wymuszenie wyświetlenia loga na samej górze paska bocznego (Base64 + CSS)
+    logo_file = "logo_jarek2.png"
+    if os.path.exists(logo_file):
+        with open(logo_file, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode()
+        
+        st.markdown(
+            f"""
+            <style>
+            [data-testid="stSidebarNav"] {{
+                background-image: url(data:image/png;base64,{encoded_string});
+                background-repeat: no-repeat;
+                background-position: center 20px;
+                background-size: 80%;
+                padding-top: 150px !important; 
+            }}
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
         
     # 2. Wczytanie stylów CSS
     css_file = "style.css"
@@ -135,3 +182,6 @@ def apply_pro_style():
         st.markdown(f'<style>\n{css}\n</style>', unsafe_allow_html=True)
     else:
         st.warning("⚠️ Błąd wyglądu: Nie znaleziono pliku style.css w głównym katalogu.")
+
+    # 3. Uruchomienie "żywego" licznika na pasku bocznym
+    render_live_badge()
