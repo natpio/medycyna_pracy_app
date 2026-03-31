@@ -1,66 +1,99 @@
-/* Import profesjonalnej czcionki UI (Inter) */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+/* Import profesjonalnej czcionki Inter */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-/* Globalna zmiana czcionki na Inter */
+/* Podstawowe ustawienia tła i czcionki */
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif !important;
+    background-color: #f8fafc !important; /* Jasne tło z wizualizacji */
 }
 
-/* Ukrycie brandingu */
-[data-testid="stHeader"] { display: none !important; height: 0px !important; }
-footer { visibility: hidden; }
+/* Ukrycie elementów Streamlit (branding, menu) */
+[data-testid="stHeader"] { display: none !important; }
+footer { visibility: hidden !important; }
+[data-testid="stSidebarNav"] { background-color: #ffffff !important; }
 
-/* Poszerzenie aplikacji i oddech */
+/* Kontener główny - marginesy */
 .block-container {
     padding-top: 2rem !important;
-    padding-bottom: 2rem !important;
-    max-width: 95% !important;
+    max-width: 1200px !important;
 }
 
-/* Luksusowe karty metryk (Metrics) z efektem unoszenia */
-[data-testid="stMetric"] {
-    background-color: #ffffff;
-    border: 1px solid #f1f5f9;
-    padding: 20px;
-    border-radius: 16px; /* Bardziej miękkie rogi */
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-    border-left: 6px solid #1E3A8A;
-    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+/* --- LEWE MENU (SIDEBAR) --- */
+[data-testid="stSidebar"] {
+    background-color: #ffffff !important;
+    border-right: 1px solid #e2e8f0 !important;
 }
 
-[data-testid="stMetric"]:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-}
-
-/* Zmiana wyglądu etykiet metryk na bardziej dyskretne */
-[data-testid="stMetricLabel"] {
-    color: #64748b !important;
-    font-weight: 500 !important;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-size: 0.85rem !important;
-}
-
-/* Wartości metryk - mocniejsze i grubsze */
-[data-testid="stMetricValue"] {
-    font-weight: 700 !important;
-    color: #0f172a !important;
-}
-
-/* Przycisk akcji Premium */
-button[kind="primary"] {
-    background: linear-gradient(135deg, #1E3A8A 0%, #2563EB 100%) !important;
-    border: none !important;
-    border-radius: 12px !important;
-    font-weight: 600 !important;
-    letter-spacing: 0.5px !important;
-    padding: 0.5rem 1rem !important;
+/* Stylizacja kart statystyk (Premium Card) */
+.premium-card {
+    background: #ffffff !important;
+    padding: 24px !important;
+    border-radius: 20px !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
     transition: all 0.3s ease !important;
-    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2) !important;
+    margin-bottom: 20px !important;
 }
 
-button[kind="primary"]:hover {
-    transform: translateY(-2px) !important;
-    box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3) !important;
+.premium-card:hover {
+    transform: translateY(-5px) !important;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1) !important;
+    border-color: #3b82f6 !important;
+}
+
+.card-label {
+    color: #64748b !important;
+    font-size: 0.75rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.05em !important;
+}
+
+.card-icon {
+    background: #f1f5f9 !important;
+    padding: 10px !important;
+    border-radius: 12px !important;
+    font-size: 1.2rem !important;
+}
+
+.card-value {
+    color: #0f172a !important;
+    font-size: 2rem !important;
+    font-weight: 800 !important;
+    margin: 12px 0 !important;
+    letter-spacing: -0.02em !important;
+}
+
+/* --- STYLIZACJA TABELI --- */
+.custom-table-container {
+    background: white !important;
+    border-radius: 20px !important;
+    border: 1px solid #e2e8f0 !important;
+    overflow: hidden !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+}
+
+.table-row:hover {
+    background-color: #f8fafc !important;
+}
+
+/* Naprawa wyświetlania kodu HTML w Streamlit */
+code {
+    display: none !important; /* Ukrywa surowy kod, jeśli Streamlit go wyrzuci */
+}
+
+/* Stylizacja przycisków */
+div.stButton > button {
+    background: #3b82f6 !important;
+    color: white !important;
+    border-radius: 12px !important;
+    border: none !important;
+    padding: 0.5rem 1rem !important;
+    font-weight: 600 !important;
+    transition: all 0.2s !important;
+}
+
+div.stButton > button:hover {
+    background: #2563eb !important;
+    transform: scale(1.02) !important;
 }
