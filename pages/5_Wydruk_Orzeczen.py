@@ -4,6 +4,7 @@ import os
 import urllib.request
 import io
 import qrcode
+import datetime
 from fpdf import FPDF
 from db_service import get_data_as_df
 from google.oauth2.service_account import Credentials
@@ -23,14 +24,12 @@ def get_secure_signature():
         return None
         
     try:
-        # Logowanie do Google Drive
         creds = Credentials.from_service_account_info(
             st.secrets["gcp_service_account"],
             scopes=['https://www.googleapis.com/auth/drive.readonly']
         )
         service = build('drive', 'v3', credentials=creds)
         
-        # Pobieranie pliku
         request = service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
@@ -38,7 +37,6 @@ def get_secure_signature():
         while not done:
             status, done = downloader.next_chunk()
             
-        # Zapis do ukrytego pliku tymczasowego (znika po restarcie aplikacji)
         temp_path = "temp_secure_signature.png"
         with open(temp_path, "wb") as f:
             f.write(fh.getvalue())
@@ -100,27 +98,23 @@ if wybrane != "--- Wybierz orzeczenie ---":
     st.divider()
     
     # --- GENEROWANIE PDF ---
-    with st.spinner("Kompilowanie zabezpieczonego dokumentu PDF z Dysku Google..."):
+    with st.spinner("Kompilowanie zabezpieczonego dokumentu PDF..."):
         pdf = FPDF()
         pdf.add_page()
         
-        # Wczytanie czcionek
         pdf.add_font("Roboto", style="", fname=font_regular)
         pdf.add_font("Roboto", style="B", fname=font_bold)
         
-        # Datownik
         pdf.set_font("Roboto", size=10)
         pdf.cell(0, 10, f"Luboń, dnia: {data_wystawienia} r.", align="R", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(10)
         
-        # Tytuł
         pdf.set_font("Roboto", style="B", size=18)
         pdf.cell(0, 10, "ORZECZENIE LEKARSKIE", align="C", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Roboto", size=10)
         pdf.cell(0, 5, f"Nr {orz_data['ID_Orzeczenia']}", align="C", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(10)
         
-        # Informacje o skierowaniu
         pdf.set_font("Roboto", size=11)
         pdf.cell(0, 6, f"Wydane na podstawie skierowania z dnia: {wizyta['DataWizyty']}", new_x="LMARGIN", new_y="NEXT")
         pdf.cell(0, 6, "Wystawionego przez pracodawcę:", new_x="LMARGIN", new_y="NEXT")
@@ -133,7 +127,6 @@ if wybrane != "--- Wybierz orzeczenie ---":
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(5)
         
-        # Informacje o pacjencie
         pdf.cell(0, 6, f"W wyniku badania profilaktycznego ({wizyta['TypBadania']}) pacjenta:", new_x="LMARGIN", new_y="NEXT")
         pdf.set_font("Roboto", style="B", size=12)
         pdf.cell(0, 8, f"Pana/Pani: {pacjent['Imie']} {pacjent['Nazwisko']}", new_x="LMARGIN", new_y="NEXT")
@@ -144,12 +137,10 @@ if wybrane != "--- Wybierz orzeczenie ---":
         pdf.line(10, pdf.get_y(), 200, pdf.get_y())
         pdf.ln(10)
         
-        # Orzeczenie
         pdf.set_font("Roboto", style="B", size=14)
         pdf.cell(0, 10, "ORZEKAM, ŻE BADANY JEST:", align="C", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
         
-        # Ramka z decyzją
         pdf.set_font("Roboto", style="B", size=16)
         pdf.set_fill_color(240, 240, 240)
         pdf.cell(0, 15, f"{orz_data['Decyzja'].upper()}", border=1, align="C", fill=True, new_x="LMARGIN", new_y="NEXT")
@@ -159,30 +150,47 @@ if wybrane != "--- Wybierz orzeczenie ---":
         pdf.cell(0, 6, "Wobec braku przeciwwskazań zdrowotnych.", new_x="LMARGIN", new_y="NEXT")
         pdf.cell(0, 6, f"Data następnego badania okresowego: {orz_data['DataKolejnegoBadania']}", new_x="LMARGIN", new_y="NEXT")
         
-        # --- GENEROWANIE KODU QR ---
-        qr = qrcode.make(f"Dokument wydany przez MedycynaPracy Lubon. Certyfikat: {podpis_cyfrowy}")
+        # --- ZAAWANSOWANE GENEROWANIE KODU QR ---
+        data_generowania = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        qr_text = (
+            f"WERYFIKACJA ORZECZENIA LEKARSKIEGO\n"
+            f"-----------------------------------\n"
+            f"Nr orzeczenia: {orz_data['ID_Orzeczenia']}\n"
+            f"Wygenerowano: {data_generowania}\n\n"
+            f"DANE LEKARZA:\n"
+            f"lek. Jarosław Tarkowski\n"
+            f"Nr rejestru: 30/1JT/370\n"
+            f"PWZ: 8776405\n\n"
+            f"CERTYFIKAT AUTENTYCZNOŚCI:\n"
+            f"{podpis_cyfrowy}"
+        )
+        
+        qr = qrcode.make(qr_text)
         qr_img_bytes = io.BytesIO()
         qr.save(qr_img_bytes, format='PNG')
         
         y_bottom = 220
         pdf.image(qr_img_bytes, x=15, y=y_bottom, w=35)
+        
+        # Krótki tekst obok kodu QR (widoczny okiem)
         pdf.set_xy(55, y_bottom + 5)
         pdf.set_font("Roboto", size=8)
-        pdf.multi_cell(60, 4, f"Zatwierdzono Elektronicznie\nKod autoryzacji:\n{podpis_cyfrowy}\nSkrypt: MedycynaPracy v1.0", align="L")
+        pdf.multi_cell(60, 4, f"Zatwierdzono Elektronicznie\nlek. Jarosław Tarkowski\nCertyfikat (SHA-256):\n{podpis_cyfrowy}", align="L")
         
         # --- WSTAWIANIE BEZPIECZNEJ PIECZĄTKI ---
         if pieczatka_path and os.path.exists(pieczatka_path):
-            pdf.image(pieczatka_path, x=140, y=y_bottom, w=50)
+            # x=130 żeby lepiej wyśrodkować po prawej stronie
+            pdf.image(pieczatka_path, x=130, y=y_bottom - 5, w=60)
         else:
             pdf.set_xy(140, y_bottom + 10)
             pdf.set_font("Roboto", size=10)
             pdf.cell(50, 20, "Pieczęć i podpis lekarza", border=1, align="C")
 
-        # Zapisz PDF do zmiennej
         pdf_bytes = bytes(pdf.output())
     
     # 5. Przycisk pobierania PDF
-    st.success("✅ Dokument zabezpieczony i gotowy do wysłania.")
+    st.success("✅ Dokument zabezpieczony i gotowy do wydruku.")
     st.download_button(
         label="📥 POBIERZ OFICJALNE ORZECZENIE (PDF)",
         data=pdf_bytes,
