@@ -9,13 +9,14 @@ from fpdf import FPDF
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
-from db_service import get_data_as_df, apply_pro_style
+# KLUCZOWA LINIA: Sprawdź, czy masz to dokładnie tak wpisane:
+from db_service import get_data_as_df, apply_pro_style 
 
 # --- 1. KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Wydruk Orzeczeń", page_icon="🖨️", layout="centered")
 
-# Uruchomienie stylu wizualnego zdefiniowanego w systemie [cite: 1, 3]
-apply_pro_style() [cite: 1, 3]
+# Wywołanie funkcji, która powodowała błąd NameError (teraz zaimportowana powyżej)
+apply_pro_style()
 
 st.markdown("# 🖨️ Generator Certyfikatów PDF")
 st.write("Wygeneruj nienaruszalny dokument PDF z kodem QR i bezpiecznym faksymile podpisu.")
@@ -56,7 +57,7 @@ def generate_pdf(pacjent, wizyta, orzeczenie, pieczatka_path):
     pdf = FPDF()
     pdf.add_page()
     
-    # Próba załadowania czcionki Roboto dla zachowania Twojego designu
+    # Próba załadowania czcionki Roboto (wymaga pliku w folderze głównym)
     try:
         pdf.add_font('Roboto', '', 'Roboto-Regular.ttf', uni=True)
         pdf.set_font('Roboto', size=12)
@@ -75,7 +76,7 @@ def generate_pdf(pacjent, wizyta, orzeczenie, pieczatka_path):
     pdf.cell(200, 8, txt=f"PESEL: {pacjent['PESEL']}", ln=True)
     pdf.ln(5)
 
-    # Treść merytoryczna
+    # Treść merytoryczna orzeczenia
     pdf.set_font("Arial", 'B', 11)
     pdf.multi_cell(0, 8, txt=f"DECYZJA: {orzeczenie['Decyzja']}")
     pdf.set_font("Arial", size=10)
@@ -83,14 +84,13 @@ def generate_pdf(pacjent, wizyta, orzeczenie, pieczatka_path):
     pdf.ln(5)
     pdf.cell(200, 8, txt=f"Termin kolejnego badania: {orzeczenie['DataKolejnegoBadania']}", ln=True)
     
-    # --- KOD QR I CERTYFIKAT (Pełna Twoja wersja) ---
+    # --- KOD QR I CERTYFIKAT ---
     podpis_cyfrowy = orzeczenie['PodpisCyfrowy']
     qr_text = (
         f"WERYFIKACJA DOKUMENTU\\n"
         f"ID: {orzeczenie['ID_Orzeczenia']}\\n"
         f"Pacjent: {pacjent['Imie']} {pacjent['Nazwisko']}\\n"
         f"Lekarz: Jarosław Tarkowski\\n"
-        f"Nr rejestru: 30/1JT/370\\n"
         f"PWZ: 8776405\\n\\n"
         f"CERTYFIKAT AUTENTYCZNOŚCI:\\n"
         f"{podpis_cyfrowy}"
@@ -117,22 +117,22 @@ def generate_pdf(pacjent, wizyta, orzeczenie, pieczatka_path):
 
     return pdf.output(dest='S').encode('latin-1', errors='replace')
 
-# --- KROK 3: FRAGMENT LIVE - AUTOMATYCZNA LISTA (All-in-One) ---
+# --- 4. FRAGMENT LIVE - AUTOMATYCZNA LISTA DO WYDRUKU ---
 @st.fragment(run_every="30s")
 def render_printable_list():
     """Odświeża listę orzeczeń co 30 sekund bez przeładowania strony."""
-    # Pobranie świeżych danych
-    df_orzeczenia = get_data_as_df("Orzeczenia") [cite: 1, 2, 3]
-    df_wizyty = get_data_as_df("Wizyty") [cite: 1, 2, 3]
-    df_pacjenci = get_data_as_df("Pacjenci") [cite: 1, 2, 3]
+    # Pobranie świeżych danych z bazy
+    df_orzeczenia = get_data_as_df("Orzeczenia")
+    df_wizyty = get_data_as_df("Wizyty")
+    df_pacjenci = get_data_as_df("Pacjenci")
 
     if df_orzeczenia.empty:
-        st.info("System czeka na wystawienie orzeczeń przez lekarza...")
+        st.info("System czeka na wystawienie pierwszych orzeczeń przez lekarza...")
         return
 
     st.subheader("Orzeczenia gotowe do wydania")
     
-    # Łączenie danych pacjenta z orzeczeniami
+    # Łączenie danych pacjenta z orzeczeniami dla wyświetlenia nazwisk
     df_print = df_orzeczenia.merge(
         df_pacjenci[['PESEL', 'Imie', 'Nazwisko']], 
         left_on='PESEL_Pacjenta', 
@@ -140,7 +140,7 @@ def render_printable_list():
         how='left'
     )
     
-    # Iteracja po 10 najnowszych rekordach
+    # Iteracja po 10 najnowszych rekordach (najnowsze na górze)
     for idx, row in df_print.tail(10).iloc[::-1].iterrows():
         with st.container(border=True):
             c_info, c_btn = st.columns([3, 1])
@@ -150,10 +150,10 @@ def render_printable_list():
             
             with c_btn:
                 try:
-                    # Szukamy wizyty dla notatek
+                    # Szukamy powiązanej wizyty, aby pobrać notatki/zagrożenia
                     wiz_row = df_wizyty[df_wizyty['ID_Wizyty'].astype(str) == str(row['ID_Wizyty'])].iloc[0]
                     
-                    # Przygotowanie PDF
+                    # Przygotowanie pliku PDF w locie
                     path_sig = get_secure_signature()
                     pdf_data = generate_pdf(row, wiz_row, row, path_sig)
                     
@@ -166,7 +166,7 @@ def render_printable_list():
                         use_container_width=True
                     )
                 except Exception as e:
-                    st.error("Błąd generowania")
+                    st.error("Błąd generowania dokumentu")
 
-# Uruchomienie fragmentu
+# Uruchomienie automatycznego fragmentu na stronie
 render_printable_list()
