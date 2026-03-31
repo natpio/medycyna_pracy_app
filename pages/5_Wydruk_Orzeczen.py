@@ -6,27 +6,60 @@ import io
 import qrcode
 from fpdf import FPDF
 from db_service import get_data_as_df
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 
 st.set_page_config(page_title="Wydruk Orzeczeń", page_icon="🖨️", layout="centered")
 st.markdown("# 🖨️ Generator Certyfikatów PDF")
-st.write("Wygeneruj nienaruszalny dokument PDF z kodem QR i faksymile podpisu.")
+st.write("Wygeneruj nienaruszalny dokument PDF z kodem QR i bezpiecznym faksymile podpisu.")
+
+# --- BEZPIECZNE POBIERANIE PIECZĄTKI Z GOOGLE DRIVE ---
+@st.cache_resource
+def get_secure_signature():
+    """Pobiera pieczątkę z Dysku Google przez autoryzowany Service Account."""
+    file_id = st.secrets.get("doctor", {}).get("signature_file_id")
+    if not file_id or file_id == "TUTAJ_WKLEJ_SWOJE_ID_PLIKU_Z_LINKU":
+        return None
+        
+    try:
+        # Logowanie do Google Drive
+        creds = Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"],
+            scopes=['https://www.googleapis.com/auth/drive.readonly']
+        )
+        service = build('drive', 'v3', credentials=creds)
+        
+        # Pobieranie pliku
+        request = service.files().get_media(fileId=file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+            
+        # Zapis do ukrytego pliku tymczasowego (znika po restarcie aplikacji)
+        temp_path = "temp_secure_signature.png"
+        with open(temp_path, "wb") as f:
+            f.write(fh.getvalue())
+        return temp_path
+    except Exception as e:
+        st.error(f"⚠️ Błąd pobierania pieczątki z chmury: {e}")
+        return None
 
 # --- POBIERANIE POLSKICH CZCIONEK ---
-# FPDF wymaga czcionek TTF do obsługi polskich znaków (ą, ę, ł itp.)
 @st.cache_resource
 def load_fonts():
     font_reg = "Roboto-Regular.ttf"
     font_bold = "Roboto-Bold.ttf"
-    
-    # Automatyczne pobieranie czcionek z serwerów Google, jeśli ich nie ma w folderze
     if not os.path.exists(font_reg):
         urllib.request.urlretrieve("https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Regular.ttf", font_reg)
     if not os.path.exists(font_bold):
         urllib.request.urlretrieve("https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Bold.ttf", font_bold)
-    
     return font_reg, font_bold
 
 font_regular, font_bold = load_fonts()
+pieczatka_path = get_secure_signature()
 
 # 1. Pobieranie danych z bazy
 df_orzeczenia = get_data_as_df("Orzeczenia")
@@ -35,7 +68,7 @@ df_pacjenci = get_data_as_df("Pacjenci")
 df_firmy = get_data_as_df("Firmy")
 
 if df_orzeczenia.empty:
-    st.info("Brak wydanych orzeczeń w bazie.")
+    st.info("Brak wydanych orzeczeń w bazie. Najpierw wystaw orzeczenie w Panelu Lekarza.")
     st.stop()
 
 # 2. Wybór orzeczenia
@@ -67,7 +100,7 @@ if wybrane != "--- Wybierz orzeczenie ---":
     st.divider()
     
     # --- GENEROWANIE PDF ---
-    with st.spinner("Kompilowanie zabezpieczonego dokumentu PDF..."):
+    with st.spinner("Kompilowanie zabezpieczonego dokumentu PDF z Dysku Google..."):
         pdf = FPDF()
         pdf.add_page()
         
@@ -75,7 +108,7 @@ if wybrane != "--- Wybierz orzeczenie ---":
         pdf.add_font("Roboto", style="", fname=font_regular)
         pdf.add_font("Roboto", style="B", fname=font_bold)
         
-        # Datownik (Prawy górny róg)
+        # Datownik
         pdf.set_font("Roboto", size=10)
         pdf.cell(0, 10, f"Luboń, dnia: {data_wystawienia} r.", align="R", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(10)
@@ -126,40 +159,35 @@ if wybrane != "--- Wybierz orzeczenie ---":
         pdf.cell(0, 6, "Wobec braku przeciwwskazań zdrowotnych.", new_x="LMARGIN", new_y="NEXT")
         pdf.cell(0, 6, f"Data następnego badania okresowego: {orz_data['DataKolejnegoBadania']}", new_x="LMARGIN", new_y="NEXT")
         
-        # --- GENEROWANIE KODU QR W LOCIE ---
+        # --- GENEROWANIE KODU QR ---
         qr = qrcode.make(f"Dokument wydany przez MedycynaPracy Lubon. Certyfikat: {podpis_cyfrowy}")
         qr_img_bytes = io.BytesIO()
         qr.save(qr_img_bytes, format='PNG')
         
-        # Wstawienie kodu QR
         y_bottom = 220
         pdf.image(qr_img_bytes, x=15, y=y_bottom, w=35)
         pdf.set_xy(55, y_bottom + 5)
         pdf.set_font("Roboto", size=8)
         pdf.multi_cell(60, 4, f"Zatwierdzono Elektronicznie\nKod autoryzacji:\n{podpis_cyfrowy}\nSkrypt: MedycynaPracy v1.0", align="L")
         
-        # --- WSTAWIANIE FAKSYMILE (PIECZĄTKI) ---
-        if os.path.exists("pieczatka.png"):
-            pdf.image("pieczatka.png", x=140, y=y_bottom, w=50)
+        # --- WSTAWIANIE BEZPIECZNEJ PIECZĄTKI ---
+        if pieczatka_path and os.path.exists(pieczatka_path):
+            pdf.image(pieczatka_path, x=140, y=y_bottom, w=50)
         else:
-            # Jeśli nie ma wgranego zdjęcia pieczątki, robimy ramkę
             pdf.set_xy(140, y_bottom + 10)
             pdf.set_font("Roboto", size=10)
             pdf.cell(50, 20, "Pieczęć i podpis lekarza", border=1, align="C")
 
-        # Zapisz PDF do bufora pamięci (nie na dysk!)
-        pdf_out = pdf.output()
-        pdf_bytes = bytes(pdf_out)
+        # Zapisz PDF do zmiennej
+        pdf_bytes = bytes(pdf.output())
     
-    # 5. Przycisk pobierania na froncie
-    st.success("✅ Orzeczenie gotowe do wydania.")
+    # 5. Przycisk pobierania PDF
+    st.success("✅ Dokument zabezpieczony i gotowy do wysłania.")
     st.download_button(
-        label="📥 POBIERZ ORZECZENIE (PDF)",
+        label="📥 POBIERZ OFICJALNE ORZECZENIE (PDF)",
         data=pdf_bytes,
         file_name=f"Orzeczenie_{pacjent['Nazwisko']}_{orz_data['ID_Orzeczenia'].replace('/','_')}.pdf",
         mime="application/pdf",
         type="primary",
         use_container_width=True
     )
-    
-    st.info("💡 Wskazówka: Zeskanuj kod QR z wygenerowanego pliku PDF za pomocą aparatu w telefonie!")
