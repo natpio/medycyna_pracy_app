@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from db_service import get_data_as_df
+from db_service import get_data_as_df, apply_pro_style
 
 st.set_page_config(page_title="Karta Pacjenta", page_icon="🗂️", layout="wide")
 st.markdown("# 🗂️ Elektroniczna Dokumentacja Medyczna (EDM)")
