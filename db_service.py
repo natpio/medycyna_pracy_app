@@ -66,28 +66,30 @@ def add_appointment_to_db(pesel, nip_firmy, typ_badania, notatki, data_wizyty):
     ws.append_row([id_wizyty, str(data_wizyty), str(pesel), str(nip_firmy), typ_badania, status, notatki])
     return True, f"Wizyta zaplanowana pomyślnie na dzień {data_wizyty}. ID: {id_wizyty}"
 
-# --- MODUŁ ORZECZNICZY Z PODPISEM CYFROWYM ---
+# --- MODUŁ ORZECZNICZY Z BEZPIECZNYM PODPISEM CYFROWYM ---
 
 def add_orzeczenie_to_db(id_wizyty, pesel, decyzja, data_kolejnego, uwagi, pin_lekarza):
-    """Zapisuje orzeczenie z unikalnym podpisem cyfrowym (SHA-256)."""
+    """Zapisuje orzeczenie z unikalnym podpisem cyfrowym (SHA-256) po weryfikacji w Secrets."""
     sh = get_db_connection()
     
-    # 1. Weryfikacja PIN (Dla bezpieczeństwa PIN powinien być w st.secrets)
-    # Na potrzeby testów ustawiliśmy: 1234
-    if pin_lekarza != "1234":
+    # 1. Bezpieczna weryfikacja PIN-u z chmury (st.secrets)
+    try:
+        correct_pin = st.secrets["doctor"]["pin"]
+    except KeyError:
+        return False, "Błąd konfiguracji: Nie znaleziono autoryzacji w systemie Secrets!"
+
+    if str(pin_lekarza) != str(correct_pin):
         return False, "Błąd autoryzacji: Nieprawidłowy PIN lekarza."
 
     # 2. Generowanie Cyfrowego Hashu (Pieczęć integralności dokumentu)
-    # Hashujemy kluczowe dane, aby uniemożliwić ich późniejszą zmianę w bazie
-    data_to_hash = f"{id_wizyty}|{pesel}|{decyzja}|{data_kolejnego}|{pin_lekarza}"
+    data_to_hash = f"{id_wizyty}|{pesel}|{decyzja}|{data_kolejnego}|{correct_pin}"
     signature_hash = hashlib.sha256(data_to_hash.encode()).hexdigest()[:16].upper()
     full_signature = f"SIG-{signature_hash}"
     
-    # 3. Zapis orzeczenia do tabeli
+    # 3. Zapis orzeczenia do tabeli (7 kolumn)
     ws_orzeczenia = sh.worksheet("Orzeczenia")
     id_orzeczenia = "ORZ/" + datetime.now().strftime("%Y%m%d%H%M%S")
     
-    # Kolumny: ID_Orzeczenia, ID_Wizyty, PESEL, Decyzja, DataKolejnego, Uwagi, Podpis_Cyfrowy
     ws_orzeczenia.append_row([
         id_orzeczenia, 
         str(id_wizyty), 
@@ -103,12 +105,11 @@ def add_orzeczenie_to_db(id_wizyty, pesel, decyzja, data_kolejnego, uwagi, pin_l
     try:
         cell = ws_wizyty.find(str(id_wizyty), in_column=1)
         if cell:
-            # Status znajduje się w 6. kolumnie
             ws_wizyty.update_cell(cell.row, 6, "Zakończona")
     except Exception as e:
         print(f"Błąd podczas aktualizacji statusu wizyty: {e}")
         
-    return True, f"Orzeczenie wystawione i podpisane cyfrowo. Kod autoryzacji: {full_signature}"
+    return True, f"Orzeczenie podpisane i wystawione. Kod autoryzacji: {full_signature}"
 
 # --- FUNKCJE DODATKOWE ---
 
