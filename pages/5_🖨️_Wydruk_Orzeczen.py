@@ -70,9 +70,10 @@ class OrzeczeniePDF(FPDF):
         self.set_font("Roboto", style="B" if is_bold else "", size=10)
         self.multi_cell(w, h - 4, str(value), border=1, align='L')
 
-def init_pdf(auto_page_break=False):
+def init_pdf():
     pdf = OrzeczeniePDF()
-    pdf.set_auto_page_break(auto=auto_page_break)
+    # Wyłączamy auto page break, aby mieć pełną kontrolę nad 3 stronami KBP
+    pdf.set_auto_page_break(auto=False)
     pdf.add_page()
     if os.path.exists(font_regular) and os.path.exists(font_bold):
         pdf.add_font("Roboto", style="", fname=font_regular)
@@ -82,24 +83,22 @@ def init_pdf(auto_page_break=False):
         pdf.set_font("Arial", size=10)
     return pdf
 
-# --- GENERATOR SZABLONU: ORZECZENIE LEKARSKIE ---
+# --- 1. GENERATOR: ORZECZENIE LEKARSKIE ---
 def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
-    pdf = init_pdf(auto_page_break=False)
+    pdf = init_pdf()
     
-    # --- NAGŁÓWEK (Lewa strona - Dane lekarza) ---
+    # Nagłówek i reszta kodu z poprzedniej, idealnie działającej wersji Orzeczenia
     pdf.set_font("Roboto", style="B", size=8)
     pdf.set_xy(10, 10)
     pdf.multi_cell(100, 4, "INDYWIDUALNA SPECJALISTYCZNA PRAKTYKA LEKARSKA\nMEDYCYNA PRACY lek. med. Jarosław Tarkowski 62-065 Grodzisk Wlkp. Ul. Chopina 18/1\nNIP 788-142-01-53; Regon 631003518; tel. 602 465 777, tel. 794626400, e-mail: jaroslaw.tarkowski@wp.pl", align="L")
     pdf.set_font("Roboto", size=7)
     pdf.cell(100, 4, "(oznaczenie podmiotu przeprowadzającego badanie)", ln=1)
     
-    # --- NAGŁÓWEK (Prawa strona - Typ badania) ---
     pdf.set_xy(130, 10)
     pdf.set_font("Roboto", size=10)
     typ_bad = str(wizyta.get('TypBadania', 'okresowe')).lower()
     pdf.multi_cell(70, 5, f"Rodzaj badania lekarskiego: {typ_bad}\n(wstępne, okresowe, kontrolne)")
     
-    # --- TYTUŁ DOKUMENTU ---
     pdf.ln(10)
     pdf.set_y(35)
     pdf.set_font("Roboto", style="B", size=14)
@@ -107,13 +106,11 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.set_font("Roboto", size=10)
     pdf.cell(0, 5, f"wydane na podstawie skierowania na badania lekarskie z dnia: {wizyta.get('DataWizyty', '')}", align="C", ln=1)
     
-    # --- PREAMBUŁA PRAWNA ---
     pdf.ln(5)
     pdf.set_font("Roboto", size=10)
     preamble = "W wyniku badania lekarskiego i oceny narażeń występujących na stanowisku pracy, stosownie do art. 43 pkt 2 i art. 229 § 4 ustawy z dnia 26 czerwca 1974 r. - Kodeks pracy (t.j.Dz. U. z 2018 r. poz. 108) oraz art.39j Ustawy o transporcie drogowym, orzeka się, że:"
     pdf.multi_cell(0, 5, preamble)
     
-    # --- DANE PACJENTA ---
     pdf.ln(5)
     pdf.cell(15, 6, "Pan(i): ")
     pdf.set_font("Roboto", style="B", size=12)
@@ -140,14 +137,12 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.set_font("Roboto", size=7)
     pdf.cell(0, 4, "(miejscowość, ulica, nr domu, nr lokalu)", ln=1)
     
-    # --- DANE PRACODAWCY ---
     pdf.ln(4)
     pdf.set_font("Roboto", size=10)
     pdf.cell(85, 6, "zatrudniony(-na) / przyjmowany(-na)*) do pracy w: ")
     pdf.set_font("Roboto", style="B", size=11)
     pdf.multi_cell(0, 6, f"{firma.get('NazwaFirmy', '')}, {firma.get('Adres', '')}")
     
-    # --- STANOWISKO ---
     pdf.ln(2)
     pdf.set_font("Roboto", size=10)
     pdf.cell(0, 6, "na stanowisku / stanowiskach/ stanowisko / stanowiska*): ", ln=1)
@@ -157,7 +152,6 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.set_x(15) 
     pdf.multi_cell(0, 6, notatki)
     
-    # --- DECYZJA (CHECKBOXY) ---
     pdf.ln(6)
     decyzja_z_bazy = str(orz_data.get('Decyzja', '')).upper()
     jest_zdolny = "NIEZDOLNY" not in decyzja_z_bazy
@@ -173,7 +167,6 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.multi_cell(0, 5, "wobec braku przeciwwskazań zdrowotnych jest zdolny(-na) do wykonywania/podjęcia*) pracy na określonym stanowisku (symbol 21)*)")
     
     pdf.ln(3)
-    
     pdf.rect(10, pdf.get_y() + 1, 4, 4)
     if not jest_zdolny:
         pdf.set_font("Roboto", style="B", size=10)
@@ -183,12 +176,10 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.multi_cell(0, 5, "wobec istnienia przeciwwskazań zdrowotnych jest niezdolny(-na) do wykonywania/podjęcia*) pracy na określonym stanowisku (symbol 22)*)")
     
     pdf.ln(3)
-    
     pdf.rect(10, pdf.get_y() + 1, 4, 4)
     pdf.set_xy(16, pdf.get_y())
     pdf.multi_cell(0, 5, "wobec istnienia przeciwwskazań zdrowotnych utracił(a) zdolność do wykonywania dotychczasowej pracy z dniem .................................. (symbol 23)*).")
     
-    # --- STOPKA: DATA NASTĘPNEGO BADANIA I PODPISY ---
     pdf.ln(8)
     pdf.set_font("Roboto", size=10)
     pdf.cell(100, 6, f"Data następnego badania okresowego: {orz_data.get('DataKolejnegoBadania', '')}")
@@ -206,7 +197,6 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.set_xy(10, y_signatures + 5)
     pdf.cell(100, 4, "(miejscowość, data)")
     
-    # --- KOD QR I ZABEZPIECZENIA ---
     data_generowania = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     podpis_cyfrowy = str(orz_data.get('Podpis_Cyfrowy', orz_data.get('PodpisCyfrowy', 'Brak autoryzacji')))
     
@@ -226,7 +216,6 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.set_font("Roboto", size=6)
     pdf.multi_cell(60, 3, f"Zatwierdzono Elektronicznie\nlek. Jarosław Tarkowski\nCertyfikat (SHA-256):\n{podpis_cyfrowy}", align="L")
     
-    # --- PIECZĄTKA / PODPIS LEKARZA ---
     if signature_path and os.path.exists(signature_path):
         pdf.image(signature_path, x=130, y=y_signatures - 10, w=55)
     else:
@@ -237,7 +226,6 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
         pdf.set_xy(120, pdf.get_y() + 10)
         pdf.cell(70, 4, "(pieczątka i podpis lekarza przeprowadzającego badanie lekarskie)", align="C")
     
-    # --- BLOK PRAWNY ---
     pdf.set_y(220)
     pdf.set_font("Roboto", size=6)
     pouczenie_text = (
@@ -259,13 +247,15 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     return bytes(pdf.output())
 
-# --- GENERATOR SZABLONU: KARTA BADANIA PROFILAKTYCZNEGO (KBP) ---
-def create_kbp_pdf(orz_data, wizyta, pacjent, firma):
-    pdf = init_pdf(auto_page_break=True)
+
+# --- 2. GENERATOR: KARTA BADANIA PROFILAKTYCZNEGO (KBP) - 3 STRONY ---
+def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
+    pdf = init_pdf() # Twardy podział stron
     
-    # --- TYTUŁ ---
+    # ------------------ STRONA 1: DANE OGÓLNE ------------------
     pdf.set_font("Roboto", style="B", size=14)
-    pdf.cell(0, 8, f"{pacjent.get('Nazwisko', '').upper()} {pacjent.get('Imie', '').upper()}", align="C", ln=1)
+    pdf.cell(0, 8, f"{pacjent.get('Nazwisko', '').upper()} {pacjent.get('Imie', '').upper()}", align="L", ln=1)
+    
     pdf.set_font("Roboto", style="B", size=16)
     pdf.cell(0, 10, "Karta badania profilaktycznego", align="C", ln=1)
     pdf.set_font("Roboto", size=10)
@@ -273,95 +263,184 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma):
     
     pdf.ln(5)
     
-    # --- DANE PACJENTA ---
-    pdf.set_font("Roboto", size=9)
-    pdf.cell(40, 6, "Nazwisko i imię:")
-    pdf.set_font("Roboto", style="B", size=11)
-    pdf.cell(0, 6, f"{pacjent.get('Nazwisko', '')} {pacjent.get('Imie', '')}", ln=1)
+    # Metryczka (zgodnie ze wzorem z KBP.pdf)
+    pdf.set_font("Roboto", size=8)
+    pdf.cell(60, 6, "Rodzaj badania profilaktycznego", border=1)
+    typ_bad = str(wizyta.get('TypBadania', '')).lower()
+    oznaczenie = "wstępne (W)" if "wstępne" in typ_bad else ("okresowe (O)" if "okresowe" in typ_bad else "kontrolne (K)")
+    pdf.cell(0, 6, f"wstępne (W); okresowe (O); kontrolne (K)    =>   Zaznaczono: {oznaczenie}", border=1, ln=1)
     
-    pdf.set_font("Roboto", size=9)
-    pdf.cell(40, 6, "PESEL:")
+    pdf.cell(60, 6, "Pozostała działalność profilaktyczna", border=1)
+    pdf.cell(0, 6, "monitoring stanu zdrowia (M); badania celowane (C); czynne poradnictwo (D); inne (I)", border=1, ln=1)
+    
+    pdf.cell(60, 6, "Objęty opieką jako", border=1)
+    pdf.cell(0, 6, "pracownik (P); praca nakładcza (N); pobierający naukę (U); na własny wniosek (W)", border=1, ln=1)
+    
+    pdf.ln(8)
+    
+    # 1. DANE OSOBY BADANEJ
     pdf.set_font("Roboto", style="B", size=11)
+    pdf.cell(0, 6, "1. DANE OSOBY BADANEJ", ln=1)
+    
+    y_start = pdf.get_y() + 2
+    pdf.draw_form_box(10, y_start, 95, 12, "Nazwisko i imię", f"{pacjent.get('Nazwisko', '')} {pacjent.get('Imie', '')}", is_bold=True)
     pesel_str = str(pacjent.get('PESEL', ''))
-    formatted_pesel = " ".join(list(pesel_str)) if pesel_str else ""
-    pdf.cell(0, 6, formatted_pesel, ln=1)
+    pdf.draw_form_box(105, y_start, 95, 12, "PESEL", pesel_str, is_bold=True)
     
-    pdf.set_font("Roboto", size=9)
-    pdf.cell(40, 6, "Adres zamieszkania:")
+    pdf.set_y(y_start + 15)
+    pdf.draw_form_box(10, pdf.get_y(), 190, 12, "Adres zamieszkania", pacjent.get('Adres', '......................................................................................'))
+    
+    pdf.set_y(pdf.get_y() + 15)
+    pdf.draw_form_box(10, pdf.get_y(), 140, 12, "Zawód wyuczony / wykonywany", ".......................................................................")
+    pdf.draw_form_box(150, pdf.get_y()-12, 50, 12, "Płeć (K / M)", "......................")
+    
+    pdf.ln(18)
+    
+    # 2. DANE PRACODAWCY / STANOWISKO
     pdf.set_font("Roboto", style="B", size=11)
-    adres_pacjenta = pacjent.get('Adres', '......................................................................................')
-    pdf.cell(0, 6, adres_pacjenta, ln=1)
+    pdf.cell(0, 6, "2. DANE IDENTYFIKACYJNE MIEJSCA PRACY / POBIERANIA NAUKI", ln=1)
     
-    # --- DANE PRACODAWCY ---
-    pdf.ln(5)
-    pdf.set_font("Roboto", style="B", size=10)
-    pdf.cell(0, 6, "Dane identyfikacyjne miejsca pracy / pobierania nauki:", ln=1)
+    y_start2 = pdf.get_y() + 2
+    pdf.draw_form_box(10, y_start2, 190, 12, "Nazwa zakładu pracy", firma.get('NazwaFirmy', ''))
+    pdf.set_y(y_start2 + 15)
+    pdf.draw_form_box(10, pdf.get_y(), 190, 12, "Adres zakładu pracy", firma.get('Adres', ''))
     
+    pdf.set_y(pdf.get_y() + 15)
+    stanowisko_pelne = str(wizyta.get('Notatki', ''))
+    stanowisko = stanowisko_pelne.split('\n')[0].replace('Stanowisko: ', '') if 'Stanowisko: ' in stanowisko_pelne else stanowisko_pelne
+    czynniki = stanowisko_pelne.replace(stanowisko, '').replace('Stanowisko: ', '').replace('Zagrożenia: ', '').strip()
+    
+    pdf.draw_form_box(10, pdf.get_y(), 190, 12, "Stanowisko pracy / kierunek nauki", stanowisko)
+    
+    pdf.set_y(pdf.get_y() + 15)
     pdf.set_font("Roboto", size=9)
-    pdf.cell(20, 6, "Nazwa:")
-    pdf.set_font("Roboto", style="B", size=11)
-    pdf.cell(0, 6, f"{firma.get('NazwaFirmy', '')}", ln=1)
+    pdf.cell(0, 6, "Skierowanie od pracodawcy / placówki dydaktycznej:   [ X ] TAK     [   ] NIE", ln=1)
     
-    pdf.set_font("Roboto", size=9)
-    pdf.cell(20, 6, "Adres:")
-    pdf.set_font("Roboto", style="B", size=11)
-    pdf.cell(0, 6, f"{firma.get('Adres', '')}", ln=1)
+    pdf.ln(2)
+    pdf.draw_form_box(10, pdf.get_y(), 190, 30, "Informacja o czynnikach szkodliwych i uciążliwych (z bazy danych)", czynniki)
     
-    pdf.set_font("Roboto", size=9)
-    pdf.cell(55, 6, "Stanowisko pracy / kierunek nauki:")
-    pdf.set_font("Roboto", style="B", size=11)
-    notatki = str(wizyta.get('Notatki', '')).replace('Stanowisko: ', '').split('\n')[0]
-    pdf.multi_cell(0, 6, notatki)
-    
-    pdf.ln(10)
-    
-    # --- MIEJSCE NA WYWIAD MEDYCZNY (DO WYPEŁNIENIA RĘCZNEGO) ---
+    # ------------------ STRONA 2: WYWIAD ------------------
+    pdf.add_page()
     pdf.set_font("Roboto", style="B", size=12)
-    pdf.cell(0, 8, "Badanie Podmiotowe (Wywiad Lekarski):", ln=1)
+    pdf.cell(0, 10, "3. BADANIE PODMIOTOWE (WYWIAD LEKARSKI)", ln=1)
     pdf.set_font("Roboto", size=10)
-    pdf.cell(0, 6, "Skargi badanego(ej): ........................................................................................................................................", ln=1)
-    pdf.cell(0, 6, "....................................................................................................................................................................................", ln=1)
+    pdf.cell(0, 6, "Skargi badanego(ej): .............................................................................................................................................................", ln=1)
+    pdf.cell(0, 6, ".......................................................................................................................................................................................................", ln=1)
     
-    pdf.ln(5)
+    pdf.ln(8)
     
-    # Tabela Wywiadu (pusta)
+    # Precyzyjna tabela wywiadu
     pdf.set_font("Roboto", style="B", size=9)
-    pdf.cell(100, 6, "Czy badany(a) choruje lub chorował(a) na:", border=1, align="C")
-    pdf.cell(20, 6, "TAK", border=1, align="C")
-    pdf.cell(20, 6, "NIE", border=1, align="C")
-    pdf.cell(50, 6, "Zaburzenia / Opis", border=1, align="C", ln=1)
+    pdf.cell(110, 8, "Czy badany(a) choruje lub chorował(a) na:", border=1, align="C")
+    pdf.cell(15, 8, "TAK", border=1, align="C")
+    pdf.cell(15, 8, "NIE", border=1, align="C")
+    pdf.cell(50, 8, "Zaburzenia / Opis", border=1, align="C", ln=1)
     
     pdf.set_font("Roboto", size=9)
     pytania = [
-        "Omdlenia, zawroty głowy, zab. równowagi",
-        "Padaczka, napadowe utraty świadomości",
-        "Cukrzyca, zaburzenia świadomości",
-        "Choroby układu sercowo-naczyniowego",
-        "Choroby układu oddechowego",
+        "Choroby układu krążenia (nadciśnienie, wady serca)",
+        "Choroby układu oddechowego (astma, POChP)",
+        "Choroby układu pokarmowego",
+        "Choroby układu moczowo-płciowego",
+        "Choroby układu nerwowego (padaczka, omdlenia)",
+        "Choroby psychiczne",
         "Choroby narządu wzroku",
         "Choroby narządu słuchu",
-        "Choroby układu ruchu (np. kręgosłup)"
+        "Choroby narządu ruchu (kręgosłup, stawy)",
+        "Choroby skóry",
+        "Choroby zakaźne / choroby zawodowe",
+        "Cukrzyca / Inne choroby metaboliczne",
+        "Nałogi (palenie tytoniu, alkohol, inne)"
     ]
     
-    for pytanie in pytania:
-        pdf.cell(100, 6, pytanie, border=1)
-        pdf.cell(20, 6, "", border=1)
-        pdf.cell(20, 6, "", border=1)
-        pdf.cell(50, 6, "", border=1, ln=1)
+    for p in pytania:
+        pdf.cell(110, 7, p, border=1)
+        pdf.cell(15, 7, "", border=1)
+        pdf.cell(15, 7, "", border=1)
+        pdf.cell(50, 7, "", border=1, ln=1)
         
     pdf.ln(15)
+    pdf.set_font("Roboto", style="I", size=10)
     pdf.cell(0, 6, "Oświadczam, że zrozumiałem(am) treść zadawanych pytań i odpowiedziałem(am) zgodnie z prawdą.", ln=1)
-    pdf.cell(0, 10, "....................................................................", ln=1, align="R")
-    pdf.cell(0, 5, "(podpis badanego)", ln=1, align="R")
     
+    pdf.ln(10)
+    pdf.cell(0, 5, "....................................................................", ln=1, align="R")
+    pdf.set_font("Roboto", size=8)
+    pdf.cell(0, 4, "(własnoręczny podpis badanego)", ln=1, align="R")
+    
+    # ------------------ STRONA 3: BADANIE PRZEDMIOTOWE I ORZECZENIE ------------------
+    pdf.add_page()
+    pdf.set_font("Roboto", style="B", size=12)
+    pdf.cell(0, 10, "4. BADANIE PRZEDMIOTOWE (OBIEKTYWNE)", ln=1)
+    
+    pdf.set_font("Roboto", size=10)
+    pdf.cell(0, 8, "Wzrost: ............ cm, Ciężar ciała: ............ kg, RR: ............ mmHg, Tętno: ............ /min", ln=1)
+    pdf.cell(0, 8, "Ostrość wzroku: OP: ........................ OL: ........................ W okularach OP: ........................ OL: ........................", ln=1)
+    
+    pdf.ln(5)
+    pdf.set_font("Roboto", style="B", size=10)
+    pdf.cell(0, 6, "Stan narządów i układów (opisać ewentualne odchylenia):", ln=1)
+    pdf.set_font("Roboto", size=10)
+    for i in range(4):
+        pdf.cell(0, 7, ".......................................................................................................................................................................................................", ln=1)
+        
+    pdf.ln(5)
+    pdf.set_font("Roboto", style="B", size=10)
+    pdf.cell(0, 6, "Wyniki badań dodatkowych / Konsultacje specjalistyczne:", ln=1)
+    pdf.set_font("Roboto", size=10)
+    for i in range(3):
+        pdf.cell(0, 7, ".......................................................................................................................................................................................................", ln=1)
+        
+    pdf.ln(10)
+    pdf.set_font("Roboto", style="B", size=12)
+    pdf.cell(0, 10, "5. DECYZJA ORZECZNICZA I UWAGI", ln=1)
+    
+    pdf.set_font("Roboto", size=9)
+    # Odwzorowanie klauzul z pliku KBP.pdf
+    pdf.cell(0, 6, "[   ] przeniesienie pracownicy w ciąży / karmiącej dziecko piersią na inne stanowisko pracy", ln=1)
+    pdf.cell(0, 6, "[   ] niezdolność do wykonywania dotychczasowej pracy ze względu na stwierdzoną chorobę zawodową", ln=1)
+    pdf.cell(0, 6, "[   ] potrzeba stosowania okularów korygujących wzrok podczas pracy przy obsłudze monitora ekranowego", ln=1)
+    
+    pdf.ln(5)
+    uwagi = str(orz_data.get('UwagiLekarza', ''))
+    if not uwagi: uwagi = "..................................................................................................................................."
+    pdf.set_font("Roboto", style="B", size=10)
+    pdf.cell(20, 6, "UWAGI: ")
+    pdf.set_font("Roboto", size=10)
+    pdf.multi_cell(0, 6, uwagi)
+    
+    pdf.ln(8)
+    data_wystawienia = orz_data.get('DataWystawienia', datetime.datetime.now().strftime('%Y-%m-%d'))
+    data_kolejnego = orz_data.get('DataKolejnegoBadania', '........................')
+    pdf.cell(0, 6, f"Data wydania orzeczenia: {data_wystawienia}", ln=1)
+    pdf.cell(0, 6, f"Data następnego badania: {data_kolejnego}", ln=1)
+    
+    pdf.ln(15)
+    y_signatures = pdf.get_y()
+    
+    pdf.set_xy(10, y_signatures)
+    pdf.cell(100, 6, f"Dokumentację medyczną wydano osobie badanej w dniu: {data_wystawienia}")
+    
+    # Pieczątka na KBP
+    if signature_path and os.path.exists(signature_path):
+        pdf.image(signature_path, x=130, y=y_signatures - 15, w=55)
+    else:
+        pdf.set_xy(120, y_signatures)
+        pdf.set_font("Roboto", style="B", size=9)
+        pdf.multi_cell(70, 4, "Badanie profilaktyczne przeprowadził:\nJarosław Tarkowski\nspecjalista medycyny pracy\n30/1JT/370\n8776405", align="C")
+        pdf.set_font("Roboto", size=7)
+        pdf.set_xy(120, pdf.get_y() + 5)
+        pdf.cell(70, 4, "(pieczęć i podpis lekarza)", align="C")
+        
     return bytes(pdf.output())
+
 
 # --- KONTROLER / ROUTER SZABLONÓW ---
 def generate_pdf_router(typ_dokumentu, orz_data, wizyta, pacjent, firma, pieczatka_path):
     if typ_dokumentu == "Orzeczenie Lekarskie":
         return create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path)
     elif typ_dokumentu == "Karta Badania (KBP)":
-        return create_kbp_pdf(orz_data, wizyta, pacjent, firma)
+        return create_kbp_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path)
     else:
         raise ValueError("Nieznany typ dokumentu")
 
@@ -395,7 +474,6 @@ if not df_orz.empty:
                 st.caption(f"PESEL: {pac.get('PESEL', '')} | Firma: {fir.get('NazwaFirmy', '')}")
             
             with col_doc:
-                # Rozwijane menu do wyboru dokumentu (unikalny klucz dla każdego wiersza)
                 typ_dokumentu = st.selectbox(
                     "Wybierz dokument:",
                     ["Orzeczenie Lekarskie", "Karta Badania (KBP)"],
