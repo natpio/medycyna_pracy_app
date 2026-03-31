@@ -1,4 +1,5 @@
 import streamlit as st
+import pandas as pd  # <--- Brakowało tego importu!
 import streamlit.components.v1 as components
 from db_service import get_data_as_df
 
