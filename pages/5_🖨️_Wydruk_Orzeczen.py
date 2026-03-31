@@ -42,7 +42,7 @@ def get_secure_signature():
     except Exception as e:
         return None
 
-# --- POBIERANIE CZCIONEK (POPRAWIONE: DODANO ITALIC) ---
+# --- POBIERANIE CZCIONEK ---
 @st.cache_resource
 def load_fonts():
     font_reg = "Roboto-Regular.ttf"
@@ -70,7 +70,7 @@ class OrzeczeniePDF(FPDF):
         self.set_font("Roboto", size=7)
         self.cell(w, 4, label, ln=1)
         self.set_xy(x, y + 4)
-        self.set_font("Roboto", style="B" if is_bold else "", size=10)
+        self.set_font("Roboto", style="B" if is_bold else "", size=9)
         self.multi_cell(w, h - 4, str(value), border=1, align='L')
 
 def init_pdf():
@@ -80,13 +80,13 @@ def init_pdf():
     if os.path.exists(font_regular) and os.path.exists(font_bold) and os.path.exists(font_italic):
         pdf.add_font("Roboto", style="", fname=font_regular)
         pdf.add_font("Roboto", style="B", fname=font_bold)
-        pdf.add_font("Roboto", style="I", fname=font_italic) # Rejestracja czcionki pochylonej
+        pdf.add_font("Roboto", style="I", fname=font_italic)
         pdf.set_font("Roboto", size=10)
     else:
         pdf.set_font("Arial", size=10)
     return pdf
 
-# --- 1. GENERATOR: ORZECZENIE LEKARSKIE ---
+# --- 1. GENERATOR: ORZECZENIE LEKARSKIE (Wzór KP) ---
 def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf = init_pdf()
     
@@ -250,21 +250,33 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     return bytes(pdf.output())
 
 
-# --- 2. GENERATOR: KARTA BADANIA PROFILAKTYCZNEGO (KBP) - 3 STRONY ---
+# --- 2. GENERATOR: KARTA BADANIA PROFILAKTYCZNEGO (KBP) - Wierna kopia wzoru ---
 def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf = init_pdf() 
     
-    # ------------------ STRONA 1: DANE OGÓLNE ------------------
+    # --- STRONA 1: DANE OGÓLNE I ZATRUDNIENIE ---
+    
+    # Nagłówek i Miejsce na pieczątkę
+    pdf.set_font("Roboto", size=8)
+    pdf.rect(10, 10, 35, 20)
+    pdf.set_xy(10, 15)
+    pdf.multi_cell(35, 4, "Pieczęć zakładu\nopieki zdrowotnej", align="C")
+    
     pdf.set_font("Roboto", style="B", size=14)
-    pdf.cell(0, 8, f"{pacjent.get('Nazwisko', '').upper()} {pacjent.get('Imie', '').upper()}", align="L", ln=1)
+    pdf.set_xy(50, 12)
+    pdf.cell(150, 6, f"{pacjent.get('Nazwisko', '').upper()} {pacjent.get('Imie', '').upper()}", align="C", ln=1)
     
     pdf.set_font("Roboto", style="B", size=16)
-    pdf.cell(0, 10, "Karta badania profilaktycznego", align="C", ln=1)
-    pdf.set_font("Roboto", size=10)
-    pdf.cell(0, 5, "(nr kolejny badania ....................................................)", align="C", ln=1)
+    pdf.set_xy(50, 20)
+    pdf.cell(150, 8, "Karta badania profilaktycznego", align="C", ln=1)
+    
+    pdf.set_font("Roboto", size=9)
+    pdf.set_xy(50, 28)
+    pdf.cell(150, 5, f"(nr kolejny badania ........ {orz_data.get('ID_Orzeczenia', '')[-6:]} ........) ", align="C", ln=1)
     
     pdf.ln(5)
     
+    # Metryczka
     pdf.set_font("Roboto", size=8)
     pdf.cell(60, 6, "Rodzaj badania profilaktycznego", border=1)
     typ_bad = str(wizyta.get('TypBadania', '')).lower()
@@ -277,10 +289,11 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.cell(60, 6, "Objęty opieką jako", border=1)
     pdf.cell(0, 6, "pracownik (P); praca nakładcza (N); pobierający naukę (U); na własny wniosek (W)", border=1, ln=1)
     
-    pdf.ln(8)
+    pdf.ln(5)
     
-    pdf.set_font("Roboto", style="B", size=11)
-    pdf.cell(0, 6, "1. DANE OSOBY BADANEJ", ln=1)
+    # 1. DANE OSOBY BADANEJ
+    pdf.set_font("Roboto", style="B", size=10)
+    pdf.cell(0, 5, "1. DANE OSOBY BADANEJ", ln=1)
     
     y_start = pdf.get_y() + 2
     pdf.draw_form_box(10, y_start, 95, 12, "Nazwisko i imię", f"{pacjent.get('Nazwisko', '')} {pacjent.get('Imie', '')}", is_bold=True)
@@ -294,10 +307,11 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.draw_form_box(10, pdf.get_y(), 140, 12, "Zawód wyuczony / wykonywany", ".......................................................................")
     pdf.draw_form_box(150, pdf.get_y()-12, 50, 12, "Płeć (K / M)", "......................")
     
-    pdf.ln(18)
+    pdf.ln(15)
     
-    pdf.set_font("Roboto", style="B", size=11)
-    pdf.cell(0, 6, "2. DANE IDENTYFIKACYJNE MIEJSCA PRACY / POBIERANIA NAUKI", ln=1)
+    # 2. DANE PRACODAWCY / STANOWISKO
+    pdf.set_font("Roboto", style="B", size=10)
+    pdf.cell(0, 5, "2. DANE IDENTYFIKACYJNE MIEJSCA PRACY / POBIERANIA NAUKI", ln=1)
     
     y_start2 = pdf.get_y() + 2
     pdf.draw_form_box(10, y_start2, 190, 12, "Nazwa zakładu pracy", firma.get('NazwaFirmy', ''))
@@ -312,52 +326,110 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.draw_form_box(10, pdf.get_y(), 190, 12, "Stanowisko pracy / kierunek nauki", stanowisko)
     
     pdf.set_y(pdf.get_y() + 15)
-    pdf.set_font("Roboto", size=9)
-    pdf.cell(0, 6, "Skierowanie od pracodawcy / placówki dydaktycznej:   [ X ] TAK     [   ] NIE", ln=1)
+    pdf.set_font("Roboto", size=8)
+    pdf.cell(95, 6, "Skierowanie od pracodawcy / placówki dydaktycznej:   [ X ] TAK     [   ] NIE")
+    pdf.cell(95, 6, "Informacja o czynnikach szkodliwych (z bazy):   [ X ] TAK     [   ] NIE", ln=1)
     
     pdf.ln(2)
-    pdf.draw_form_box(10, pdf.get_y(), 190, 30, "Informacja o czynnikach szkodliwych i uciążliwych (z bazy danych)", czynniki)
+    pdf.draw_form_box(10, pdf.get_y(), 190, 25, "Czynniki szkodliwe i uciążliwe dla zdrowia występujące w miejscu pracy (zgodnie ze skierowaniem)", czynniki)
     
-    # ------------------ STRONA 2: WYWIAD ------------------
+    pdf.ln(28)
+    
+    # TABELA ZATRUDNIENIA
+    pdf.set_font("Roboto", style="B", size=9)
+    pdf.cell(0, 5, "Dotychczasowe zatrudnienie / dotychczasowa praktyczna nauka zawodu, studia:", ln=1)
+    
+    pdf.set_font("Roboto", size=7)
+    pdf.cell(50, 8, "Nazwa i adres pracodawcy", border=1, align="C")
+    pdf.cell(40, 8, "Stanowisko pracy/nauki", border=1, align="C")
+    pdf.cell(30, 8, "Okres zatrudnienia", border=1, align="C")
+    pdf.cell(40, 8, "Czynniki szkodliwe / uciążliwe", border=1, align="C")
+    pdf.cell(30, 8, "Okres w narażeniu", border=1, align="C", ln=1)
+    
+    for _ in range(3):
+        pdf.cell(50, 5, "", border=1)
+        pdf.cell(40, 5, "", border=1)
+        pdf.cell(30, 5, "", border=1)
+        pdf.cell(40, 5, "", border=1)
+        pdf.cell(30, 5, "", border=1, ln=1)
+        
+    pdf.ln(5)
+    
+    # WYWIAD ZAWODOWY / WYPADKI
+    pdf.set_font("Roboto", style="B", size=9)
+    pdf.cell(0, 5, "Czy w przebiegu pracy zawodowej:", ln=1)
+    pdf.set_font("Roboto", size=8)
+    pdf.cell(0, 5, "[  ] Nie   [  ] Tak    a) stwierdzono chorobę zawodową? jaką? .....................................................................................", ln=1)
+    pdf.cell(0, 5, "[  ] Nie   [  ] Tak    b) lekarz wnioskował o zmianę stanowiska pracy ze względu na stan zdrowia? ............................", ln=1)
+    pdf.cell(0, 5, "[  ] Nie   [  ] Tak    c) badany(a) uległ(a) wypadkowi w pracy? kiedy? ............................................................................", ln=1)
+    pdf.cell(0, 5, "[  ] Nie   [  ] Tak    d) orzeczono świadczenia rentowe / stopień niepełnosprawności? .................................................", ln=1)
+    
+    
+    # --- STRONA 2: WYWIAD CHOROBOWY ---
     pdf.add_page()
     pdf.set_font("Roboto", style="B", size=12)
-    pdf.cell(0, 10, "3. BADANIE PODMIOTOWE (WYWIAD LEKARSKI)", ln=1)
-    pdf.set_font("Roboto", size=10)
-    pdf.cell(0, 6, "Skargi badanego(ej): .............................................................................................................................................................", ln=1)
-    pdf.cell(0, 6, ".......................................................................................................................................................................................................", ln=1)
-    
-    pdf.ln(8)
+    pdf.cell(0, 8, "3. BADANIE PODMIOTOWE (WYWIAD LEKARSKI)", ln=1)
     
     pdf.set_font("Roboto", style="B", size=9)
-    pdf.cell(110, 8, "Czy badany(a) choruje lub chorował(a) na:", border=1, align="C")
-    pdf.cell(15, 8, "TAK", border=1, align="C")
-    pdf.cell(15, 8, "NIE", border=1, align="C")
-    pdf.cell(50, 8, "Zaburzenia / Opis", border=1, align="C", ln=1)
-    
+    pdf.cell(0, 5, "Skargi badanego(ej):", ln=1)
     pdf.set_font("Roboto", size=9)
+    pdf.cell(0, 5, ".......................................................................................................................................................................................................", ln=1)
+    pdf.cell(0, 5, ".......................................................................................................................................................................................................", ln=1)
+    
+    pdf.ln(5)
+    
+    # Tabela Wywiadu Chorobowego
+    pdf.set_font("Roboto", style="B", size=9)
+    pdf.cell(100, 6, "Czy badany(a) choruje lub chorował(a) na:", border=1, align="C")
+    pdf.cell(15, 6, "Tak", border=1, align="C")
+    pdf.cell(15, 6, "Nie", border=1, align="C")
+    pdf.cell(60, 6, "Zaburzenia / Opis", border=1, align="C", ln=1)
+    
+    pdf.set_font("Roboto", size=8)
     pytania = [
-        "Choroby układu krążenia (nadciśnienie, wady serca)",
+        "Choroby czaszki i układu nerwowego (padaczka, lecz. u neurol.)",
+        "Omdlenia, zawroty głowy, zab. Równowagi",
+        "Choroby psychiczne, leczenie u psychiatry",
+        "Cukrzyca, zaburzenia świadomości, senność, niski cukier",
+        "Choroby narządu wzroku",
+        "Choroby narządu słuchu i głosu",
+        "Choroby układu krążenia",
         "Choroby układu oddechowego (astma, POChP)",
         "Choroby układu pokarmowego",
         "Choroby układu moczowo-płciowego",
-        "Choroby układu nerwowego (padaczka, omdlenia)",
-        "Choroby psychiczne",
-        "Choroby narządu wzroku",
-        "Choroby narządu słuchu",
-        "Choroby narządu ruchu (kręgosłup, stawy)",
-        "Choroby skóry",
-        "Choroby zakaźne / choroby zawodowe",
-        "Cukrzyca / Inne choroby metaboliczne",
-        "Nałogi (palenie tytoniu, alkohol, inne)"
+        "Choroby układu ruchu, ograniczenia ruchu w stawach",
+        "Choroby skóry / uczulenia / alergia w pracy",
+        "Choroby zakaźne / pasożytnicze",
+        "Urazy w przeszłości",
+        "Nałogi (palenie tytoniu, alkohol, używki)"
     ]
     
     for p in pytania:
-        pdf.cell(110, 7, p, border=1)
-        pdf.cell(15, 7, "", border=1)
-        pdf.cell(15, 7, "", border=1)
-        pdf.cell(50, 7, "", border=1, ln=1)
+        pdf.cell(100, 6, p, border=1)
+        pdf.cell(15, 6, "", border=1)
+        pdf.cell(15, 6, "", border=1)
+        pdf.cell(60, 6, "", border=1, ln=1)
         
-    pdf.ln(15)
+    pdf.ln(5)
+    
+    # Dodatkowy wywiad (Rodzinny, Leki, Operacje)
+    pdf.set_font("Roboto", style="B", size=9)
+    pdf.cell(0, 6, "Wywiad rodzinny (alergie, astma, cukrzyca, chor. psychiczne, choroby serca, nadciśnienie, nowotwory, inne):", ln=1)
+    pdf.set_font("Roboto", size=9)
+    pdf.cell(0, 5, ".......................................................................................................................................................................................................", ln=1)
+    
+    pdf.ln(3)
+    pdf.set_font("Roboto", style="B", size=9)
+    pdf.cell(0, 6, "Subiektywna ocena stanu zdrowia:", ln=1)
+    pdf.set_font("Roboto", size=9)
+    pdf.cell(0, 6, "[  ] Bardzo Dobre    [  ] Dobre    [  ] Raczej dobre    [  ] Raczej słabe    [  ] Słabe        uwagi: .......................................", ln=1)
+    
+    pdf.ln(3)
+    pdf.cell(0, 6, "Czy badany(a) przebył(a) zabieg / operacyjny?     [  ] TAK   [  ] NIE   Jakie? ..................................................................", ln=1)
+    pdf.cell(0, 6, "Czy jest pod opieką poradni specjalistycznej?     [  ] TAK   [  ] NIE   Jakiej? .................................................................", ln=1)
+    pdf.cell(0, 6, "Czy badany(a) przyjmuje leki?                     [  ] TAK   [  ] NIE   Jakie? ..................................................................", ln=1)
+    
+    pdf.ln(10)
     pdf.set_font("Roboto", style="I", size=10)
     pdf.cell(0, 6, "Oświadczam, że zrozumiałem(am) treść zadawanych pytań i odpowiedziałem(am) zgodnie z prawdą.", ln=1)
     
@@ -366,53 +438,103 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.set_font("Roboto", size=8)
     pdf.cell(0, 4, "(własnoręczny podpis badanego)", ln=1, align="R")
     
-    # ------------------ STRONA 3: BADANIE PRZEDMIOTOWE I ORZECZENIE ------------------
+    
+    # --- STRONA 3: BADANIE PRZEDMIOTOWE I ORZECZENIE ---
     pdf.add_page()
     pdf.set_font("Roboto", style="B", size=12)
-    pdf.cell(0, 10, "4. BADANIE PRZEDMIOTOWE (OBIEKTYWNE)", ln=1)
-    
-    pdf.set_font("Roboto", size=10)
-    pdf.cell(0, 8, "Wzrost: ............ cm, Ciężar ciała: ............ kg, RR: ............ mmHg, Tętno: ............ /min", ln=1)
-    pdf.cell(0, 8, "Ostrość wzroku: OP: ........................ OL: ........................ W okularach OP: ........................ OL: ........................", ln=1)
-    
-    pdf.ln(5)
-    pdf.set_font("Roboto", style="B", size=10)
-    pdf.cell(0, 6, "Stan narządów i układów (opisać ewentualne odchylenia):", ln=1)
-    pdf.set_font("Roboto", size=10)
-    for i in range(4):
-        pdf.cell(0, 7, ".......................................................................................................................................................................................................", ln=1)
-        
-    pdf.ln(5)
-    pdf.set_font("Roboto", style="B", size=10)
-    pdf.cell(0, 6, "Wyniki badań dodatkowych / Konsultacje specjalistyczne:", ln=1)
-    pdf.set_font("Roboto", size=10)
-    for i in range(3):
-        pdf.cell(0, 7, ".......................................................................................................................................................................................................", ln=1)
-        
-    pdf.ln(10)
-    pdf.set_font("Roboto", style="B", size=12)
-    pdf.cell(0, 10, "5. DECYZJA ORZECZNICZA I UWAGI", ln=1)
+    pdf.cell(0, 8, "4. BADANIE PRZEDMIOTOWE (OBIEKTYWNE)", ln=1)
     
     pdf.set_font("Roboto", size=9)
-    pdf.cell(0, 6, "[   ] przeniesienie pracownicy w ciąży / karmiącej dziecko piersią na inne stanowisko pracy", ln=1)
-    pdf.cell(0, 6, "[   ] niezdolność do wykonywania dotychczasowej pracy ze względu na stwierdzoną chorobę zawodową", ln=1)
-    pdf.cell(0, 6, "[   ] potrzeba stosowania okularów korygujących wzrok podczas pracy przy obsłudze monitora ekranowego", ln=1)
+    pdf.cell(0, 6, "Wzrost: ............ cm, Ciężar ciała: ............ kg, RR: ............ mmHg, Tętno: ............ /min", ln=1)
+    pdf.cell(0, 6, "Wzrok: VIS OP: ........................ OL: ........................ W okularach OP: ........................ OL: ........................", ln=1)
+    pdf.cell(0, 6, "Słuch: szept UP: ........................ m, UL: ........................ m  | Układ równowagi (Romberg): ........................................", ln=1)
     
     pdf.ln(5)
+    
+    # Tabela Układów i Narządów
+    pdf.set_font("Roboto", style="B", size=8)
+    pdf.cell(40, 6, "Narząd / Układ", border=1, align="C")
+    pdf.cell(15, 6, "Norma", border=1, align="C")
+    pdf.cell(15, 6, "Pat.", border=1, align="C")
+    pdf.cell(15, 6, "N.B.", border=1, align="C")
+    pdf.cell(105, 6, "Patologia (opis)", border=1, align="C", ln=1)
+
+    uklady = [
+        "Skóra", "Czaszka", "Węzły chłonne", "Nos", "Jama ustno-gardłowa", 
+        "Szyja", "Klatka piersiowa", "Płuca", "Układ sercowo-naczyniowy", 
+        "Jama brzuszna", "Układ moczowo-płciowy", "Układ ruchu", "Układ nerwowy", "Stan psychiczny"
+    ]
+    pdf.set_font("Roboto", size=8)
+    for u in uklady:
+        pdf.cell(40, 5, u, border=1)
+        pdf.cell(15, 5, "", border=1) # Norma
+        pdf.cell(15, 5, "", border=1) # Pat
+        pdf.cell(15, 5, "", border=1) # N.B.
+        pdf.cell(105, 5, "", border=1, ln=1)
+        
+    pdf.ln(5)
+    
+    # Tabela Badania Pomocnicze
+    pdf.set_font("Roboto", style="B", size=9)
+    pdf.cell(0, 5, "Badania pomocnicze", ln=1)
+    pdf.set_font("Roboto", size=7)
+    pdf.cell(10, 6, "L.p", border=1, align="C")
+    pdf.cell(50, 6, "Rodzaj badania", border=1, align="C")
+    pdf.cell(30, 6, "Data skierowania", border=1, align="C")
+    pdf.cell(30, 6, "Data wykonania", border=1, align="C")
+    pdf.cell(70, 6, "Wyniki badania (najważniejsze)", border=1, align="C", ln=1)
+    for i in range(1, 4):
+        pdf.cell(10, 5, str(i), border=1, align="C")
+        pdf.cell(50, 5, "", border=1)
+        pdf.cell(30, 5, "", border=1)
+        pdf.cell(30, 5, "", border=1)
+        pdf.cell(70, 5, "", border=1, ln=1)
+        
+    pdf.ln(4)
+    
+    # Tabela Konsultacje Specjalistyczne
+    pdf.set_font("Roboto", style="B", size=9)
+    pdf.cell(0, 5, "Konsultacje specjalistyczne", ln=1)
+    pdf.set_font("Roboto", size=7)
+    pdf.cell(10, 6, "L.p", border=1, align="C")
+    pdf.cell(50, 6, "Skierowanie do specjalisty", border=1, align="C")
+    pdf.cell(30, 6, "Data skierowania", border=1, align="C")
+    pdf.cell(30, 6, "Data konsultacji", border=1, align="C")
+    pdf.cell(70, 6, "Wynik konsultacji", border=1, align="C", ln=1)
+    for i in range(1, 4):
+        pdf.cell(10, 5, str(i), border=1, align="C")
+        pdf.cell(50, 5, "", border=1)
+        pdf.cell(30, 5, "", border=1)
+        pdf.cell(30, 5, "", border=1)
+        pdf.cell(70, 5, "", border=1, ln=1)
+        
+    pdf.ln(8)
+    
+    # 5. DECYZJA
+    pdf.set_font("Roboto", style="B", size=11)
+    pdf.cell(0, 6, "5. DECYZJA ORZECZNICZA I UWAGI", ln=1)
+    
+    pdf.set_font("Roboto", size=8)
+    pdf.cell(0, 5, "[   ] brak przeciwwskazań zdrowotnych do pracy na stanowisku", ln=1)
+    pdf.cell(0, 5, "[   ] przeciwwskazania zdrowotne do pracy na stanowisku", ln=1)
+    pdf.cell(0, 5, "[   ] utrata zdolności do wykonywania dotychczasowej pracy", ln=1)
+    pdf.cell(0, 5, "[   ] potrzeba stosowania okularów korygujących wzrok podczas pracy przy obsłudze monitora ekranowego", ln=1)
+    
+    pdf.ln(3)
     uwagi = str(orz_data.get('UwagiLekarza', ''))
     if not uwagi: uwagi = "..................................................................................................................................."
-    pdf.set_font("Roboto", style="B", size=10)
-    pdf.cell(20, 6, "UWAGI: ")
-    pdf.set_font("Roboto", size=10)
+    pdf.set_font("Roboto", style="B", size=9)
+    pdf.cell(15, 6, "UWAGI: ")
+    pdf.set_font("Roboto", size=9)
     pdf.multi_cell(0, 6, uwagi)
     
-    pdf.ln(8)
+    pdf.ln(3)
     data_wystawienia = orz_data.get('DataWystawienia', datetime.datetime.now().strftime('%Y-%m-%d'))
     data_kolejnego = orz_data.get('DataKolejnegoBadania', '........................')
     pdf.cell(0, 6, f"Data wydania orzeczenia: {data_wystawienia}", ln=1)
     pdf.cell(0, 6, f"Data następnego badania: {data_kolejnego}", ln=1)
     
-    pdf.ln(15)
+    pdf.ln(10)
     y_signatures = pdf.get_y()
     
     pdf.set_xy(10, y_signatures)
@@ -430,7 +552,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
         
     return bytes(pdf.output())
 
-
 # --- KONTROLER / ROUTER SZABLONÓW ---
 def generate_pdf_router(typ_dokumentu, orz_data, wizyta, pacjent, firma, pieczatka_path):
     if typ_dokumentu == "Orzeczenie Lekarskie":
@@ -447,7 +568,7 @@ st.write("Wybierz odpowiedni typ dokumentu do wygenerowania dla pacjenta.")
 df_orz = get_data_as_df("Orzeczenia")
 df_wiz = get_data_as_df("Wizyty")
 df_pac = get_data_as_df("Pacjenci")
-df_fir = get_data_as_df("Firmy")
+df_firmy = get_data_as_df("Firmy")
 
 if not df_orz.empty:
     st.subheader("Lista dokumentów do wydruku")
@@ -460,7 +581,7 @@ if not df_orz.empty:
         pac = df_pac[df_pac['PESEL'].astype(str) == pesel].iloc[0] if not df_pac.empty and pesel in df_pac['PESEL'].astype(str).values else {"Imie": "Brak", "Nazwisko": "Danych", "PESEL": pesel}
         
         nip = str(wiz.get('NIP_Firmy', '0'))
-        fir = df_fir[df_fir['NIP'].astype(str) == nip].iloc[0] if not df_fir.empty and nip in df_fir['NIP'].astype(str).values else {"NazwaFirmy": "Prywatnie / Brak Firmy", "Adres": "-", "NIP": nip}
+        fir = df_firmy[df_firmy['NIP'].astype(str) == nip].iloc[0] if not df_firmy.empty and nip in df_firmy['NIP'].astype(str).values else {"NazwaFirmy": "Prywatnie / Brak Firmy", "Adres": "-", "NIP": nip}
 
         with st.container(border=True):
             col_info, col_doc, col_btn = st.columns([2.5, 1.5, 1])
