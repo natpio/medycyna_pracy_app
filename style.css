@@ -1,0 +1,40 @@
+/* 1. Całkowite ukrycie górnego paska Streamlit (hamburger, deploy, avatar) */
+[data-testid="stHeader"] {
+    display: none !important;
+    height: 0px !important;
+}
+
+/* 2. Ukrycie stopki "Made with Streamlit" */
+footer {
+    visibility: hidden;
+}
+
+/* 3. Zmniejszenie gigantycznego białego marginesu na górze i poszerzenie aplikacji */
+.block-container {
+    padding-top: 2rem !important;
+    padding-bottom: 2rem !important;
+    max-width: 95% !important;
+}
+
+/* 4. Stylowanie kart statystyk (Metrics) - efekt PRO */
+[data-testid="stMetric"] {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    border-left: 5px solid #1E3A8A; /* Granatowy akcent z lewej strony */
+}
+
+/* 5. Stylowanie Przycisków Akcji */
+button[kind="primary"] {
+    border-radius: 8px !important;
+    font-weight: bold !important;
+    letter-spacing: 0.5px !important;
+    transition: all 0.3s ease !important;
+}
+
+button[kind="primary"]:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 10px 15px -3px rgba(30, 58, 138, 0.2) !important;
+}
