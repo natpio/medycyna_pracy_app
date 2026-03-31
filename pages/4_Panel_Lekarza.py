@@ -1,90 +1,131 @@
 import streamlit as st
 import datetime
+import pandas as pd
 from db_service import get_data_as_df, add_orzeczenie_to_db
 
+# --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Panel Lekarza", page_icon="👨‍⚕️", layout="wide")
 st.markdown("# 👨‍⚕️ Gabinet Orzecznika")
 
-# 1. Pobranie danych o wizytach i pacjentach
+# 1. Pobranie danych z bazy
 df_wizyty = get_data_as_df("Wizyty")
 df_pacjenci = get_data_as_df("Pacjenci")
+df_slownik = get_data_as_df("Slownik_Badan")
 
 if df_wizyty.empty:
-    st.info("Brak jakichkolwiek wizyt w systemie.")
+    st.info("Brak zarejestrowanych wizyt w systemie.")
     st.stop()
 
-# 2. Filtrujemy TYLKO pacjentów w poczekalni (status: Zaplanowana)
+# 2. Filtrowanie pacjentów w poczekalni (status: Zaplanowana)
 zaplanowane = df_wizyty[df_wizyty['Status'] == 'Zaplanowana']
 
 if zaplanowane.empty:
-    st.success("🎉 Świetna robota, Panie Doktorze! Brak oczekujących pacjentów na dziś.")
+    st.success("🎉 Świetna robota, Panie Doktorze! Brak oczekujących pacjentów w poczekalni.")
     st.stop()
 
 st.subheader("Bieżąca kolejka pacjentów")
 
-# 3. Przygotowanie listy do wyboru
-lista_wyboru = ["--- Wybierz pacjenta z poczekalni ---"]
-wizyty_dict = {} # Słownik ułatwiający wyciągnięcie danych po kliknięciu
+# 3. Przygotowanie listy do wyboru pacjenta
+wizyty_dict = {
+    f"{row['DataWizyty']} | PESEL: {row['PESEL_Pacjenta']} ({row['TypBadania']})": row 
+    for _, row in zaplanowane.iterrows()
+}
+wybrana_etykieta = st.selectbox("Wybierz pacjenta z listy, aby rozpocząć badanie:", options=["--- Wybierz pacjenta ---"] + list(wizyty_dict.keys()))
 
-for index, wizyta in zaplanowane.iterrows():
-    # Szukamy imienia i nazwiska na podstawie PESELu
-    pacjent_dane = df_pacjenci[df_pacjenci['PESEL'] == str(wizyta['PESEL_Pacjenta'])]
-    
-    imie = pacjent_dane.iloc[0]['Imie'] if not pacjent_dane.empty else "Nieznane"
-    nazwisko = pacjent_dane.iloc[0]['Nazwisko'] if not pacjent_dane.empty else "Nieznane"
-    
-    etykieta = f"{wizyta['DataWizyty']} | {nazwisko} {imie} ({wizyta['TypBadania']})"
-    lista_wyboru.append(etykieta)
-    wizyty_dict[etykieta] = wizyta
-
-# 4. Lekarz wybiera kogo zaprasza do gabinetu
-wybrana_etykieta = st.selectbox("Oczekujący:", options=lista_wyboru)
-
-if wybrana_etykieta != "--- Wybierz pacjenta z poczekalni ---":
+if wybrana_etykieta != "--- Wybierz pacjenta ---":
     wizyta = wizyty_dict[wybrana_etykieta]
     
-    # --- KARTA BADANIA ---
+    # Pobranie szczegółowych danych pacjenta
+    pacjent_dane = df_pacjenci[df_pacjenci['PESEL'].astype(str) == str(wizyta['PESEL_Pacjenta'])]
+    pacjent = pacjent_dane.iloc[0] if not pacjent_dane.empty else None
+
     st.divider()
-    col1, col2 = st.columns(2)
+    
+    # Układ panelu: Dane pacjenta vs Inteligentne podpowiedzi
+    col1, col2 = st.columns([1, 2])
     
     with col1:
-        st.markdown("### 📋 Informacje ze skierowania")
-        st.write(f"**PESEL:** {wizyta['PESEL_Pacjenta']}")
-        st.write(f"**NIP Firmy:** {wizyta['NIP_Firmy']}")
+        st.markdown("### 👤 Dane Pacjenta")
+        if pacjent is not None:
+            st.write(f"**Imię i Nazwisko:** {pacjent['Imie']} {pacjent['Nazwisko']}")
+            st.write(f"**PESEL:** {pacjent['PESEL']}")
+            st.write(f"**Data urodzenia:** {pacjent['DataUrodzenia']}")
+        else:
+            st.error("Nie znaleziono danych osobowych dla tego numeru PESEL.")
+        
         st.write(f"**Rodzaj badania:** {wizyta['TypBadania']}")
+        st.write(f"**Data skierowania:** {wizyta['DataWizyty']}")
     
     with col2:
-        st.markdown("### ⚠️ Czynniki szkodliwe")
-        st.info(wizyta['Notatki'] if wizyta['Notatki'] else "Brak wpisanych uwag od pracodawcy.")
+        st.markdown("### 🧠 Inteligentna Analiza Skierowania")
+        notatki_raw = str(wizyta['Notatki'])
+        notatki_lcase = notatki_raw.lower()
         
+        st.info(f"**Treść skierowania (Stanowisko i zagrożenia):**\n\n{notatki_raw}")
+        
+        # LOGIKA PODPOWIEDZI NA PODSTAWIE SŁOWNIKA
+        sugerowane_konsultacje = set()
+        sugerowane_badania = set()
+        
+        if not df_slownik.empty:
+            for _, regula in df_slownik.iterrows():
+                czynnik_klucz = str(regula['Czynnik']).lower()
+                if czynnik_klucz in notatki_lcase:
+                    # Dodaj konsultacje (jeśli nie są puste lub nie są kreską)
+                    kons = str(regula['Konsultacje_Specjalistyczne'])
+                    if kons and kons not in ["—", "nan", "None", ""]:
+                        sugerowane_konsultacje.add(kons)
+                    
+                    # Dodaj badania diagnostyczne
+                    diag = str(regula['Badania_Diagnostyczne'])
+                    if diag and diag not in ["—", "nan", "None", ""]:
+                        sugerowane_badania.add(diag)
+        
+        # Wyświetlanie wyników analizy
+        if sugerowane_konsultacje or sugerowane_badania:
+            st.warning("⚠️ **Wymagane konsultacje i badania na podstawie czynników szkodliwych:**")
+            if sugerowane_konsultacje:
+                st.write(f"**Specjaliści:** {', '.join(sugerowane_konsultacje)}")
+            if sugerowane_badania:
+                st.write(f"**Badania diagnostyczne:** {', '.join(sugerowane_badania)}")
+        else:
+            st.success("System nie wykrył specyficznych wymogów dla wpisanych czynników szkodliwych.")
+
     st.divider()
     
-    # --- FORMULARZ ORZECZNICZY ---
-    st.markdown("### 📝 Wystawienie orzeczenia")
+    # --- FORMULARZ WYSTAWIANIA ORZECZENIA ---
+    st.markdown("### 📝 Decyzja Orzecznicza")
     with st.form("orzeczenie_form"):
-        decyzja = st.radio(
-            "Decyzja lekarza:",
-            ("ZDOLNY do wykonywania pracy.",
-             "NIEZDOLNY do wykonywania pracy.")
-        )
+        col_dec, col_date = st.columns(2)
         
-        data_kolejnego = st.date_input("Data kolejnego badania okresowego:", min_value=datetime.date.today())
+        with col_dec:
+            decyzja = st.radio(
+                "Wynik badania profilaktycznego:",
+                ("ZDOLNY do wykonywania pracy.", "NIEZDOLNY do wykonywania pracy.")
+            )
         
-        uwagi = st.text_area("Wewnętrzne notatki medyczne (wywiad, wyniki badań):", height=100)
+        with col_date:
+            # Domyślnie ustawiamy datę za 3 lata
+            domyslna_data = datetime.date.today() + datetime.timedelta(days=3*365)
+            data_kolejnego = st.date_input("Data następnego badania okresowego:", value=domyslna_data)
         
-        zapisz_btn = st.form_submit_button("Wystaw Orzeczenie i Zakończ Wizytę", type="primary")
+        uwagi_lek = st.text_area("Uwagi lekarza / Ograniczenia / Zalecenia:", height=100)
         
-        if zapisz_btn:
-            with st.spinner("Zapisywanie w systemie..."):
-                sukces, wiadomosc = add_orzeczenie_to_db(
+        submit_btn = st.form_submit_button("Wystaw Orzeczenie i Zakończ Wizytę", type="primary")
+        
+        if submit_btn:
+            with st.spinner("Przetwarzanie dokumentacji..."):
+                sukces, message = add_orzeczenie_to_db(
                     id_wizyty=wizyta['ID_Wizyty'],
                     pesel=wizyta['PESEL_Pacjenta'],
                     decyzja=decyzja,
                     data_kolejnego=data_kolejnego,
-                    uwagi=uwagi
+                    uwagi=uwagi_lek
                 )
+            
             if sukces:
-                st.success(wiadomosc)
-                st.info("Zaktualizuj stronę (F5), aby pobrać kolejnego pacjenta z kolejki.")
+                st.balloons()
+                st.success(message)
+                st.info("Pacjent został usunięty z poczekalni. Odśwież stronę (F5), aby pobrać kolejną osobę.")
             else:
-                st.error("Wystąpił błąd podczas zapisu.")
+                st.error(f"Błąd: {message}")
