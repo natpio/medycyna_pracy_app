@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from db_service import get_data_as_df, add_appointment_to_db, add_stanowisko_to_db
+from db_service import get_data_as_df, apply_pro_style
 import datetime
 
 st.set_page_config(page_title="Nowa Wizyta", page_icon="📅")
