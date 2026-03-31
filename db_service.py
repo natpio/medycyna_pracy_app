@@ -122,14 +122,12 @@ def add_stanowisko_to_db(nip_firmy, nazwa_stanowiska, czynniki):
 # --- MODUŁ WYGLĄDU PRO (Zarządzanie CSS) ---
 
 def apply_pro_style():
-    """Wczytuje profesjonalny plik CSS i ładuje logo."""
-    # 1. Ładowanie logo na samej górze sidebaru (nad menu)
-    try:
-        st.logo("logo_jarek2.png")
-    except AttributeError:
-        pass # Ignoruje w przypadku starszych wersji Streamlit
+    """Wczytuje profesjonalny plik CSS i ukrywa branding Streamlit."""
+    # 1. Wymuszenie wyświetlenia loga na samej górze paska bocznego
+    if os.path.exists("logo_jarek2.png"):
+        st.sidebar.image("logo_jarek2.png", use_container_width=True)
         
-    # 2. Ładowanie stylów CSS z pliku
+    # 2. Wczytanie stylów CSS
     css_file = "style.css"
     if os.path.exists(css_file):
         with open(css_file, 'r', encoding='utf-8') as f:
