@@ -1,4 +1,4 @@
-/* --- 1. IMPORT CZCIONKI I PODSTAWY --- */
+/* --- 1. CZCIONKA I PODSTAWY --- */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 html, body, [class*="css"] {
@@ -10,13 +10,19 @@ html, body, [class*="css"] {
 [data-testid="stHeader"] { display: none !important; }
 footer { visibility: hidden !important; }
 
-/* --- 2. NIEBIESKI SIDEBAR (MENU BOCZNE) --- */
+/* Kontener główny */
+.block-container {
+    padding-top: 2rem !important;
+    max-width: 1250px !important;
+}
+
+/* --- 2. NIEBIESKI SIDEBAR (PASEK BOCZNY) --- */
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #1e3a8a 0%, #111827 100%) !important;
     border-right: none !important;
 }
 
-/* Miejsce na logo Jarek2 na samej górze */
+/* Miejsce na logo Jarek2 na samej górze menu */
 [data-testid="stSidebarNav"] {
     padding-top: 140px !important; 
     background-color: transparent !important;
@@ -26,7 +32,7 @@ footer { visibility: hidden !important; }
 [data-testid="stSidebarNav"] span {
     color: rgba(255, 255, 255, 0.8) !important;
     font-weight: 500 !important;
-    font-size: 0.92rem !important;
+    font-size: 0.95rem !important;
 }
 
 /* Aktywna podstrona w menu */
@@ -40,7 +46,7 @@ footer { visibility: hidden !important; }
     font-weight: 700 !important;
 }
 
-/* --- 3. PRZERWA W MENU (MODUŁY LEKARSKIE) --- */
+/* --- 3. PRZERWA W MENU (PRZED MODUŁAMI LEKARZA) --- */
 /* Odstęp przed przedostatnim elementem (Panel Lekarza) */
 [data-testid="stSidebarNav"] ul li:nth-last-child(2) {
     margin-top: 45px !important; 
@@ -76,14 +82,21 @@ footer { visibility: hidden !important; }
     z-index: 100;
 }
 
-/* --- 5. DASHBOARD (KARTY I TABELA) --- */
+/* --- 5. KARTY STATYSTYK (DASHBOARD) --- */
 .premium-card {
     background: white;
     padding: 24px;
     border-radius: 20px;
     border: 1px solid #e2e8f0;
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+    transition: all 0.3s ease;
     margin-bottom: 15px;
+}
+
+.premium-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.08);
+    border-color: #bfdbfe;
 }
 
 .card-label {
@@ -94,6 +107,7 @@ footer { visibility: hidden !important; }
     letter-spacing: 0.05em;
 }
 
+/* --- 6. NOWOCZESNA TABELA HTML --- */
 .custom-table-container {
     background: white;
     border-radius: 20px;
@@ -106,7 +120,7 @@ footer { visibility: hidden !important; }
     background-color: #f8fafc !important;
 }
 
-/* Stylizacja przycisków */
+/* --- 7. PRZYCISKI --- */
 div.stButton > button {
     background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%) !important;
     color: white !important;
@@ -114,4 +128,11 @@ div.stButton > button {
     border: none !important;
     padding: 0.6rem 1.2rem !important;
     font-weight: 600 !important;
+    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2) !important;
+    transition: all 0.2s ease !important;
+}
+
+div.stButton > button:hover {
+    transform: translateY(-2px) !important;
+    box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3) !important;
 }
