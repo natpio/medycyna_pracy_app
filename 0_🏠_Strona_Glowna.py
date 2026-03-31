@@ -97,13 +97,13 @@ def render_live_activity_table():
                         {str(row['TypBadania'])[0] if row['TypBadania'] else "?"}
                     </div>
                     <div>
-                        <div style="color: #0f172a; font-weight: 700; font-size: 0.95rem;">{row['Imie']} {row['Nazwisko']}</div>
+                        <div style="color: #0f172a; font-weight: 700; font-size: 0.95rem;">{row.get('Imie', '')} {row.get('Nazwisko', 'Nieznany')}</div>
                         <div style="color: #64748b; font-size: 0.75rem;">{row['TypBadania']}</div>
                     </div>
                 </div>
             </td>
             <td style="padding: 16px;">
-                <div style="color: #1e293b; font-weight: 600; font-size: 0.85rem;">{row['NazwaFirmy']}</div>
+                <div style="color: #1e293b; font-weight: 600; font-size: 0.85rem;">{row.get('NazwaFirmy', 'Brak')}</div>
                 <div style="color: #94a3b8; font-size: 0.75rem;">📅 {row['DataWizyty']}</div>
             </td>
             <td style="padding: 16px; text-align: center;">
@@ -128,7 +128,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Pobranie danych dla statycznych kart KPI
+# Pobranie danych dla statycznych kart KPI (odświeżają się przy przeładowaniu całej strony)
 df_wizyty_st = get_data_as_df("Wizyty")
 df_pacjenci_st = get_data_as_df("Pacjenci")
 df_firmy_st = get_data_as_df("Firmy")
@@ -151,12 +151,12 @@ col_l, col_r = st.columns([2.2, 1])
 
 with col_l:
     st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Ostatnie aktywności (Live)</h4>", unsafe_allow_html=True)
-    # Wywołanie fragmentu, który sam się odświeża
+    # Wywołanie fragmentu, który sam się odświeża co 30 sekund
     render_live_activity_table()
 
 with col_r:
     st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Szybkie akcje</h4>", unsafe_allow_html=True)
-    # Przyciski przełączające strony 
+    # Przyciski przełączające podstrony (Streamlit > 1.30.0)
     if st.button("➕ Nowy Pacjent", use_container_width=True):
         st.switch_page("pages/1_👤_Rejestracja_Pacjenta.py")
     if st.button("📅 Zaplanuj Wizytę", use_container_width=True):
@@ -168,7 +168,7 @@ with col_r:
     st.markdown("""
         <div style="background: #eff6ff; padding: 20px; border-radius: 16px; border: 1px solid #dbeafe;">
             <p style="margin: 0; font-size: 0.82rem; color: #1e40af; line-height: 1.5;">
-                💡 <b>System Inteligentny:</b><br>Statusy wizyt aktualizują się same, gdy lekarz zakończy badanie.
+                💡 <b>System Inteligentny:</b><br>Statusy wizyt w tabeli obok aktualizują się same, gdy lekarz zakończy badanie.
             </p>
         </div>
     """, unsafe_allow_html=True)
