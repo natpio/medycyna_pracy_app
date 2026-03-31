@@ -59,14 +59,17 @@ def add_company_to_db(nip, nazwa, adres, c_wst, c_okr, c_kon, c_san):
     st.cache_data.clear()
     return True, "Firma wraz z cennikiem została dodana pomyślnie."
 
-def add_appointment_to_db(pesel, nip_firmy, typ_badania, notatki, data_wizyty):
+def add_appointment_to_db(pesel, nip_firmy, typ_badania, notatki, data_wizyty, godzina=None):
     sh = get_db_connection()
     ws = sh.worksheet("Wizyty")
     
     id_wizyty = datetime.now().strftime("%Y%m%d%H%M%S")
     status = "Zaplanowana"
     
-    ws.append_row([id_wizyty, str(data_wizyty), str(pesel), str(nip_firmy), typ_badania, status, notatki])
+    # Obsługa opcjonalnej godziny - jeśli została podana, konwertujemy na string, w przeciwnym razie pusty ciąg
+    godzina_zapis = str(godzina) if godzina else ""
+    
+    ws.append_row([id_wizyty, str(data_wizyty), str(pesel), str(nip_firmy), typ_badania, status, notatki, godzina_zapis])
     st.cache_data.clear()
     return True, f"Wizyta zaplanowana pomyślnie na dzień {data_wizyty}. ID: {id_wizyty}"
 
@@ -182,6 +185,6 @@ def apply_pro_style():
         st.markdown(f'<style>\n{css}\n</style>', unsafe_allow_html=True)
     else:
         st.warning("⚠️ Błąd wyglądu: Nie znaleziono pliku style.css w głównym katalogu.")
-
+    
     # 3. Uruchomienie "żywego" licznika na pasku bocznym
     render_live_badge()
