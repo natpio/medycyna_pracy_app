@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 import hashlib
 import os
+import base64 # <-- Dodane do obsługi loga
 
 # --- KONFIGURACJA POŁĄCZENIA ---
 @st.cache_resource
@@ -122,12 +123,31 @@ def add_stanowisko_to_db(nip_firmy, nazwa_stanowiska, czynniki):
 # --- MODUŁ WYGLĄDU PRO (Zarządzanie CSS) ---
 
 def apply_pro_style():
-    """Wczytuje profesjonalny plik CSS i ukrywa branding Streamlit."""
-    # 1. Wymuszenie wyświetlenia loga na samej górze paska bocznego
-    if os.path.exists("logo_jarek2.png"):
-        st.sidebar.image("logo_jarek2.png", use_container_width=True)
+    """Wczytuje profesjonalny plik CSS i umieszcza logo na górze."""
+    
+    # 1. Wstrzyknięcie loga na SAMĄ GÓRĘ menu (nad listą stron) za pomocą base64 i CSS
+    logo_file = "logo_jarek2.png"
+    if os.path.exists(logo_file):
+        with open(logo_file, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode()
         
-    # 2. Wczytanie stylów CSS
+        # Odsunięcie menu w dół (padding-top) i wstawienie obrazka jako tła
+        st.markdown(
+            f"""
+            <style>
+            [data-testid="stSidebarNav"] {{
+                background-image: url(data:image/png;base64,{encoded_string});
+                background-repeat: no-repeat;
+                background-position: center 20px;
+                background-size: 80%;
+                padding-top: 150px !important; 
+            }}
+            </style>
+            """,
+            unsafe_allow_html=True
+        )
+        
+    # 2. Wczytanie stylów CSS (w tym separatora Strefy Lekarza)
     css_file = "style.css"
     if os.path.exists(css_file):
         with open(css_file, 'r', encoding='utf-8') as f:
