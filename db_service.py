@@ -10,9 +10,9 @@ import time
 # --- WYMUSZENIE POLSKIEJ STREFY CZASOWEJ W CHMURZE ---
 os.environ['TZ'] = 'Europe/Warsaw'
 try:
-    time.tzset()  # Aktualizuje czas systemowy dla tego skryptu (działa m.in. na Streamlit Cloud / Linux)
+    time.tzset()  # Aktualizuje czas systemowy dla tego skryptu
 except AttributeError:
-    pass  # Ignoruje błąd na lokalnym systemie Windows (Windows domyślnie używa czasu systemowego)
+    pass
 
 # --- KONFIGURACJA POŁĄCZENIA ---
 @st.cache_resource
@@ -52,7 +52,7 @@ def add_patient_to_db(pesel, imie, nazwisko, data_urodzenia, telefon):
         return False, "Pacjent o takim numerze PESEL już istnieje w bazie."
 
     ws.append_row([str(pesel), imie, nazwisko, str(data_urodzenia), telefon])
-    st.cache_data.clear()  # <-- Zrzuca pamięć podręczną po aktualizacji bazy
+    st.cache_data.clear()
     return True, "Pacjent dodany pomyślnie."
 
 def add_company_to_db(nip, nazwa, adres, c_wst, c_okr, c_kon, c_san):
@@ -71,11 +71,8 @@ def add_appointment_to_db(pesel, nip_firmy, typ_badania, notatki, data_wizyty, g
     sh = get_db_connection()
     ws = sh.worksheet("Wizyty")
     
-    # Pobieramy obecny czas - dzięki time.tzset() będzie to zawsze czas polski!
     id_wizyty = datetime.now().strftime("%Y%m%d%H%M%S")
     status = "Zaplanowana"
-    
-    # Obsługa opcjonalnej godziny - jeśli została podana, konwertujemy na string, w przeciwnym razie pusty ciąg
     godzina_zapis = str(godzina) if godzina else ""
     
     ws.append_row([id_wizyty, str(data_wizyty), str(pesel), str(nip_firmy), typ_badania, status, notatki, godzina_zapis])
@@ -139,10 +136,8 @@ def render_live_badge():
     """Automatycznie odświeżany skrypt sprawdzający kolejkę (uruchamia się co 10 sek w tle)."""
     df_wizyty = get_data_as_df("Wizyty")
     if not df_wizyty.empty:
-        # Liczymy tylko wizyty ze statusem "Zaplanowana"
         oczekujacy = len(df_wizyty[df_wizyty['Status'] == 'Zaplanowana'])
         if oczekujacy > 0:
-            # Dynamiczny CSS dodający licznik (badge) na pasku bocznym
             css = f"""
             <style>
             [data-testid="stSidebarNav"] a[href*="Panel_Lekarza"] span::after {{
@@ -160,12 +155,11 @@ def render_live_badge():
             """
             st.markdown(css, unsafe_allow_html=True)
         else:
-            # Usuwamy licznik, gdy poczekalnia jest pusta
             st.markdown('<style>[data-testid="stSidebarNav"] a[href*="Panel_Lekarza"] span::after { content: none; }</style>', unsafe_allow_html=True)
 
 def apply_pro_style():
     """Wczytuje profesjonalny plik CSS, logo i uruchamia nasłuch kolejki."""
-    # 1. Wymuszenie wyświetlenia loga na samej górze paska bocznego (Base64 + CSS)
+    # 1. Główny logotyp gabinetu na górze
     logo_file = "logo_jarek2.png"
     if os.path.exists(logo_file):
         with open(logo_file, "rb") as image_file:
@@ -192,8 +186,35 @@ def apply_pro_style():
         with open(css_file, 'r', encoding='utf-8') as f:
             css = f.read()
         st.markdown(f'<style>\n{css}\n</style>', unsafe_allow_html=True)
-    else:
-        st.warning("⚠️ Błąd wyglądu: Nie znaleziono pliku style.css w głównym katalogu.")
     
-    # 3. Uruchomienie "żywego" licznika na pasku bocznym
+    # 3. Licznik poczekalni (Live)
     render_live_badge()
+
+    # 4. Stopka twórców (Zawsze na dole paska bocznego)
+    # Rozpoznaje logo z rozszerzeniem .png lub .jpg
+    creator_logo = None
+    if os.path.exists("logo_firma.png"):
+        creator_logo = "logo_firma.png"
+        mime = "image/png"
+    elif os.path.exists("logo_firma.jpg"):
+        creator_logo = "logo_firma.jpg"
+        mime = "image/jpeg"
+        
+    if creator_logo:
+        with open(creator_logo, "rb") as image_file:
+            encoded_creator = base64.b64encode(image_file.read()).decode()
+        
+        footer_html = f"""
+        <div style="position: fixed; bottom: 20px; left: 15px; width: 230px; padding: 12px 15px; background: rgba(0, 0, 0, 0.15); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); z-index: 100;">
+            <div style="font-size: 0.55rem; color: rgba(255,255,255,0.4); letter-spacing: 1px; margin-bottom: 8px; font-weight: 700;">
+                TECHNOLOGIA I WDROŻENIE:
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+                <img src="data:{mime};base64,{encoded_creator}" width=\"36\" style="border-radius: 6px;">
+                <div style="color: #ffffff; font-size: 0.85rem; font-weight: 700; letter-spacing: 0.5px; line-height: 1.2;">
+                    VORTEZA<br><span style="font-weight: 500; font-size: 0.65rem; color: #94a3b8;">SYSTEMS</span>
+                </div>
+            </div>
+        </div>
+        """
+        st.sidebar.markdown(footer_html, unsafe_allow_html=True)
