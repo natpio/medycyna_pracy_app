@@ -70,10 +70,9 @@ class OrzeczeniePDF(FPDF):
         self.set_font("Roboto", style="B" if is_bold else "", size=10)
         self.multi_cell(w, h - 4, str(value), border=1, align='L')
 
-def init_pdf():
+def init_pdf(auto_page_break=False):
     pdf = OrzeczeniePDF()
-    # Wyłączamy automatyczne łamanie strony, aby wymusić stopkę prawną na dole
-    pdf.set_auto_page_break(auto=False)
+    pdf.set_auto_page_break(auto=auto_page_break)
     pdf.add_page()
     if os.path.exists(font_regular) and os.path.exists(font_bold):
         pdf.add_font("Roboto", style="", fname=font_regular)
@@ -83,9 +82,9 @@ def init_pdf():
         pdf.set_font("Arial", size=10)
     return pdf
 
-# --- GŁÓWNY GENERATOR SZABLONU ---
+# --- GENERATOR SZABLONU: ORZECZENIE LEKARSKIE ---
 def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
-    pdf = init_pdf()
+    pdf = init_pdf(auto_page_break=False)
     
     # --- NAGŁÓWEK (Lewa strona - Dane lekarza) ---
     pdf.set_font("Roboto", style="B", size=8)
@@ -148,14 +147,13 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.set_font("Roboto", style="B", size=11)
     pdf.multi_cell(0, 6, f"{firma.get('NazwaFirmy', '')}, {firma.get('Adres', '')}")
     
-    # --- STANOWISKO (POPRAWIONE ŁAMANIE) ---
+    # --- STANOWISKO ---
     pdf.ln(2)
     pdf.set_font("Roboto", size=10)
     pdf.cell(0, 6, "na stanowisku / stanowiskach/ stanowisko / stanowiska*): ", ln=1)
     
     pdf.set_font("Roboto", style="B", size=11)
     notatki = str(wizyta.get('Notatki', '')).replace('Stanowisko: ', '').split('\n')[0]
-    # Wcięcie dla czytelności stanowiska
     pdf.set_x(15) 
     pdf.multi_cell(0, 6, notatki)
     
@@ -223,7 +221,6 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     qr_img_bytes = io.BytesIO()
     qr.save(qr_img_bytes, format='PNG')
     
-    # Wklejenie QR po lewej stronie
     pdf.image(qr_img_bytes, x=12, y=y_signatures + 10, w=22)
     pdf.set_xy(36, y_signatures + 15)
     pdf.set_font("Roboto", size=6)
@@ -231,10 +228,8 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     # --- PIECZĄTKA / PODPIS LEKARZA ---
     if signature_path and os.path.exists(signature_path):
-        # Wklejenie obrazu z Dysku Google po prawej stronie
         pdf.image(signature_path, x=130, y=y_signatures - 10, w=55)
     else:
-        # Fallback - pieczątka tekstowa
         pdf.set_xy(120, y_signatures - 5)
         pdf.set_font("Roboto", style="B", size=9)
         pdf.multi_cell(70, 4, "Badanie profilaktyczne przeprowadził:\nJarosław Tarkowski\nspecjalista medycyny pracy\n30/1JT/370\n8776405", align="C")
@@ -242,7 +237,7 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
         pdf.set_xy(120, pdf.get_y() + 10)
         pdf.cell(70, 4, "(pieczątka i podpis lekarza przeprowadzającego badanie lekarskie)", align="C")
     
-    # --- BLOK PRAWNY: SYMBOLE I POUCZENIE (Dół strony) ---
+    # --- BLOK PRAWNY ---
     pdf.set_y(220)
     pdf.set_font("Roboto", size=6)
     pouczenie_text = (
@@ -264,12 +259,115 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     return bytes(pdf.output())
 
+# --- GENERATOR SZABLONU: KARTA BADANIA PROFILAKTYCZNEGO (KBP) ---
+def create_kbp_pdf(orz_data, wizyta, pacjent, firma):
+    pdf = init_pdf(auto_page_break=True)
+    
+    # --- TYTUŁ ---
+    pdf.set_font("Roboto", style="B", size=14)
+    pdf.cell(0, 8, f"{pacjent.get('Nazwisko', '').upper()} {pacjent.get('Imie', '').upper()}", align="C", ln=1)
+    pdf.set_font("Roboto", style="B", size=16)
+    pdf.cell(0, 10, "Karta badania profilaktycznego", align="C", ln=1)
+    pdf.set_font("Roboto", size=10)
+    pdf.cell(0, 5, "(nr kolejny badania ....................................................)", align="C", ln=1)
+    
+    pdf.ln(5)
+    
+    # --- DANE PACJENTA ---
+    pdf.set_font("Roboto", size=9)
+    pdf.cell(40, 6, "Nazwisko i imię:")
+    pdf.set_font("Roboto", style="B", size=11)
+    pdf.cell(0, 6, f"{pacjent.get('Nazwisko', '')} {pacjent.get('Imie', '')}", ln=1)
+    
+    pdf.set_font("Roboto", size=9)
+    pdf.cell(40, 6, "PESEL:")
+    pdf.set_font("Roboto", style="B", size=11)
+    pesel_str = str(pacjent.get('PESEL', ''))
+    formatted_pesel = " ".join(list(pesel_str)) if pesel_str else ""
+    pdf.cell(0, 6, formatted_pesel, ln=1)
+    
+    pdf.set_font("Roboto", size=9)
+    pdf.cell(40, 6, "Adres zamieszkania:")
+    pdf.set_font("Roboto", style="B", size=11)
+    adres_pacjenta = pacjent.get('Adres', '......................................................................................')
+    pdf.cell(0, 6, adres_pacjenta, ln=1)
+    
+    # --- DANE PRACODAWCY ---
+    pdf.ln(5)
+    pdf.set_font("Roboto", style="B", size=10)
+    pdf.cell(0, 6, "Dane identyfikacyjne miejsca pracy / pobierania nauki:", ln=1)
+    
+    pdf.set_font("Roboto", size=9)
+    pdf.cell(20, 6, "Nazwa:")
+    pdf.set_font("Roboto", style="B", size=11)
+    pdf.cell(0, 6, f"{firma.get('NazwaFirmy', '')}", ln=1)
+    
+    pdf.set_font("Roboto", size=9)
+    pdf.cell(20, 6, "Adres:")
+    pdf.set_font("Roboto", style="B", size=11)
+    pdf.cell(0, 6, f"{firma.get('Adres', '')}", ln=1)
+    
+    pdf.set_font("Roboto", size=9)
+    pdf.cell(55, 6, "Stanowisko pracy / kierunek nauki:")
+    pdf.set_font("Roboto", style="B", size=11)
+    notatki = str(wizyta.get('Notatki', '')).replace('Stanowisko: ', '').split('\n')[0]
+    pdf.multi_cell(0, 6, notatki)
+    
+    pdf.ln(10)
+    
+    # --- MIEJSCE NA WYWIAD MEDYCZNY (DO WYPEŁNIENIA RĘCZNEGO) ---
+    pdf.set_font("Roboto", style="B", size=12)
+    pdf.cell(0, 8, "Badanie Podmiotowe (Wywiad Lekarski):", ln=1)
+    pdf.set_font("Roboto", size=10)
+    pdf.cell(0, 6, "Skargi badanego(ej): ........................................................................................................................................", ln=1)
+    pdf.cell(0, 6, "....................................................................................................................................................................................", ln=1)
+    
+    pdf.ln(5)
+    
+    # Tabela Wywiadu (pusta)
+    pdf.set_font("Roboto", style="B", size=9)
+    pdf.cell(100, 6, "Czy badany(a) choruje lub chorował(a) na:", border=1, align="C")
+    pdf.cell(20, 6, "TAK", border=1, align="C")
+    pdf.cell(20, 6, "NIE", border=1, align="C")
+    pdf.cell(50, 6, "Zaburzenia / Opis", border=1, align="C", ln=1)
+    
+    pdf.set_font("Roboto", size=9)
+    pytania = [
+        "Omdlenia, zawroty głowy, zab. równowagi",
+        "Padaczka, napadowe utraty świadomości",
+        "Cukrzyca, zaburzenia świadomości",
+        "Choroby układu sercowo-naczyniowego",
+        "Choroby układu oddechowego",
+        "Choroby narządu wzroku",
+        "Choroby narządu słuchu",
+        "Choroby układu ruchu (np. kręgosłup)"
+    ]
+    
+    for pytanie in pytania:
+        pdf.cell(100, 6, pytanie, border=1)
+        pdf.cell(20, 6, "", border=1)
+        pdf.cell(20, 6, "", border=1)
+        pdf.cell(50, 6, "", border=1, ln=1)
+        
+    pdf.ln(15)
+    pdf.cell(0, 6, "Oświadczam, że zrozumiałem(am) treść zadawanych pytań i odpowiedziałem(am) zgodnie z prawdą.", ln=1)
+    pdf.cell(0, 10, "....................................................................", ln=1, align="R")
+    pdf.cell(0, 5, "(podpis badanego)", ln=1, align="R")
+    
+    return bytes(pdf.output())
+
 # --- KONTROLER / ROUTER SZABLONÓW ---
-def generate_pdf_router(orz_data, wizyta, pacjent, firma, pieczatka_path):
-    return create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path), "Zgodne ze Wzorem (KP 43.2)"
+def generate_pdf_router(typ_dokumentu, orz_data, wizyta, pacjent, firma, pieczatka_path):
+    if typ_dokumentu == "Orzeczenie Lekarskie":
+        return create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path)
+    elif typ_dokumentu == "Karta Badania (KBP)":
+        return create_kbp_pdf(orz_data, wizyta, pacjent, firma)
+    else:
+        raise ValueError("Nieznany typ dokumentu")
 
 # --- INTERFEJS UI (STREAMLIT) ---
-st.markdown("# 🖨️ Generator Orzeczeń")
+st.markdown("# 🖨️ Generator Dokumentów Medycznych")
+st.write("Wybierz odpowiedni typ dokumentu do wygenerowania dla pacjenta.")
 
 df_orz = get_data_as_df("Orzeczenia")
 df_wiz = get_data_as_df("Wizyty")
@@ -277,7 +375,7 @@ df_pac = get_data_as_df("Pacjenci")
 df_fir = get_data_as_df("Firmy")
 
 if not df_orz.empty:
-    st.subheader("Lista najnowszych dokumentów do wydruku")
+    st.subheader("Lista dokumentów do wydruku")
     for _, orz in df_orz.sort_values("ID_Orzeczenia", ascending=False).head(10).iterrows():
         
         id_wiz = str(orz.get('ID_Wizyty', ''))
@@ -290,26 +388,33 @@ if not df_orz.empty:
         fir = df_fir[df_fir['NIP'].astype(str) == nip].iloc[0] if not df_fir.empty and nip in df_fir['NIP'].astype(str).values else {"NazwaFirmy": "Prywatnie / Brak Firmy", "Adres": "-", "NIP": nip}
 
         with st.container(border=True):
-            col_info, col_btn = st.columns([3, 1])
+            col_info, col_doc, col_btn = st.columns([2.5, 1.5, 1])
             
-            try:
-                pdf_bytes, typ_szablonu = generate_pdf_router(orz, wiz, pac, fir, pieczatka_path)
-                
-                with col_info:
-                    st.markdown(f"📄 **{pac.get('Nazwisko', '')} {pac.get('Imie', '')}** (PESEL: {pac.get('PESEL', '')})")
-                    st.caption(f"Firma: {fir.get('NazwaFirmy', '')} | Zastosowany układ: **{typ_szablonu}**")
-                
-                with col_btn:
+            with col_info:
+                st.markdown(f"📄 **{pac.get('Nazwisko', '')} {pac.get('Imie', '')}**")
+                st.caption(f"PESEL: {pac.get('PESEL', '')} | Firma: {fir.get('NazwaFirmy', '')}")
+            
+            with col_doc:
+                # Rozwijane menu do wyboru dokumentu (unikalny klucz dla każdego wiersza)
+                typ_dokumentu = st.selectbox(
+                    "Wybierz dokument:",
+                    ["Orzeczenie Lekarskie", "Karta Badania (KBP)"],
+                    key=f"sel_{orz.get('ID_Orzeczenia', '')}",
+                    label_visibility="collapsed"
+                )
+            
+            with col_btn:
+                try:
+                    pdf_bytes = generate_pdf_router(typ_dokumentu, orz, wiz, pac, fir, pieczatka_path)
                     st.download_button(
-                        label="📥 Pobierz PDF",
+                        label="📥 Pobierz",
                         data=pdf_bytes,
-                        file_name=f"Orzeczenie_{pac.get('Nazwisko', '')}.pdf",
+                        file_name=f"{typ_dokumentu.replace(' ', '_')}_{pac.get('Nazwisko', '')}.pdf",
                         mime="application/pdf",
-                        key=f"dl_{orz.get('ID_Orzeczenia', '')}",
+                        key=f"dl_{typ_dokumentu}_{orz.get('ID_Orzeczenia', '')}",
                         use_container_width=True
                     )
-            except Exception as e:
-                with col_info:
-                    st.error(f"Błąd kompilacji pliku PDF: {e}")
+                except Exception as e:
+                    st.error(f"Błąd kompilacji: {e}")
 else:
     st.info("Brak wystawionych orzeczeń w bazie systemu.")
