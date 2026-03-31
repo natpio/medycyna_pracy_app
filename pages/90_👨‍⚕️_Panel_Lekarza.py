@@ -1,129 +1,115 @@
 import streamlit as st
 import datetime
 import pandas as pd
+# Importowanie funkcji z modułu serwisowego
 from db_service import get_data_as_df, add_orzeczenie_to_db, apply_pro_style
 
-# --- KONFIGURACJA STRONY ---
+# --- 1. KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Panel Lekarza", page_icon="👨‍⚕️", layout="wide")
 
-# --- URUCHOMIENIE STYLU PRO ---
+# Uruchomienie profesjonalnego stylu CSS zdefiniowanego w db_service.py
 apply_pro_style()
 
 st.markdown("# 👨‍⚕️ Gabinet Orzecznika")
 
-# 1. Pobranie danych z bazy
+# --- KROK 2: FRAGMENT LIVE - AUTOMATYCZNY LICZNIK KOLEJKI ---
+@st.fragment(run_every="30s")
+def live_queue_indicator():
+    """Automatycznie odświeżany wskaźnik pacjentów oczekujących w poczekalni."""
+    # Pobranie świeżych danych o wizytach z Google Sheets
+    df_wizyty_live = get_data_as_df("Wizyty")
+    
+    if not df_wizyty_live.empty:
+        # Wybieramy tylko pacjentów ze statusem 'Zaplanowana'
+        kolejka = df_wizyty_live[df_wizyty_live['Status'] == 'Zaplanowana']
+        liczba_oczekujacych = len(kolejka)
+        
+        if liczba_oczekujacych > 0:
+            # Wyświetlenie dyskretnego powiadomienia w rogu ekranu
+            st.toast(f"Poczekalnia: {liczba_oczekujacych} pacjentów", icon="🔔")
+            
+            # Nowoczesny baner informacyjny widoczny nad formularzem
+            st.markdown(f"""
+                <div style="background: #fff7ed; padding: 16px; border-radius: 12px; border: 1px solid #ffedd5; margin-bottom: 25px; display: flex; align-items: center; gap: 15px;">
+                    <span style="font-size: 24px;">🚨</span>
+                    <div>
+                        <p style="margin: 0; color: #9a3412; font-weight: 800; font-size: 1.1rem;">Pacjenci w poczekalni: {liczba_oczekujacych}</p>
+                        <p style="margin: 0; color: #c2410c; font-size: 0.85rem;">Lista odświeża się automatycznie w tle co 30 sekund.</p>
+                    </div>
+                </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.success("🎉 Brak oczekujących pacjentów. Poczekalnia jest pusta.")
+    else:
+        st.info("Brak wizyt zarejestrowanych w systemie.")
+
+# Aktywacja licznika na górze strony
+live_queue_indicator()
+
+# --- 2. POBIERANIE DANYCH DO FORMULARZA BADANIA ---
 df_wizyty = get_data_as_df("Wizyty")
 df_pacjenci = get_data_as_df("Pacjenci")
-df_slownik = get_data_as_df("Slownik_Badan")
 
-if df_wizyty.empty:
-    st.info("Brak zarejestrowanych wizyt w systemie.")
-    st.stop()
-
-# 2. Filtrowanie pacjentów w poczekalni (status: Zaplanowana)
-zaplanowane = df_wizyty[df_wizyty['Status'] == 'Zaplanowana']
+# Filtrowanie pacjentów do wyboru (tylko aktualnie zaplanowane wizyty)
+zaplanowane = df_wizyty[df_wizyty['Status'] == 'Zaplanowana'] if not df_wizyty.empty else pd.DataFrame()
 
 if zaplanowane.empty:
-    st.success("🎉 Świetna robota, Panie Doktorze! Brak oczekujących pacjentów w poczekalni.")
-    st.stop()
+    st.stop() # Jeśli nikogo nie ma, formularz poniżej się nie pokaże
 
-st.subheader("Bieżąca kolejka pacjentów")
+st.subheader("Wybierz pacjenta z listy, aby rozpocząć badanie")
 
-# 3. Przygotowanie listy do wyboru pacjenta
+# Przygotowanie listy rozwijanej z godziną i danymi pacjenta
 wizyty_dict = {
-    f"{row['DataWizyty']} | PESEL: {row['PESEL_Pacjenta']} ({row['TypBadania']})": row 
+    f"{row['DataWizyty']} | {row['Godzina'] if 'Godzina' in row else ''} | PESEL: {row['PESEL_Pacjenta']} ({row['TypBadania']})": row['ID_Wizyty'] 
     for _, row in zaplanowane.iterrows()
 }
-wybrana_etykieta = st.selectbox("Wybierz pacjenta z listy, aby rozpocząć badanie:", options=["--- Wybierz pacjenta ---"] + list(wizyty_dict.keys()))
 
-if wybrana_etykieta != "--- Wybierz pacjenta ---":
-    wizyta = wizyty_dict[wybrana_etykieta]
-    
-    # Pobranie szczegółowych danych pacjenta
-    pacjent_dane = df_pacjenci[df_pacjenci['PESEL'].astype(str) == str(wizyta['PESEL_Pacjenta'])]
-    pacjent = pacjent_dane.iloc[0] if not pacjent_dane.empty else None
+wybrana_wizyta_label = st.selectbox("Lista pacjentów gotowych do badania:", options=list(wizyty_dict.keys()))
+id_wizyty_wybranej = wizyty_dict[wybrana_wizyta_label]
 
-    st.divider()
-    
-    # Układ panelu: Dane pacjenta vs Inteligentne podpowiedzi
-    col1, col2 = st.columns([1, 2])
-    
-    with col1:
-        st.markdown("### 👤 Dane Pacjenta")
-        if pacjent is not None:
-            st.write(f"**Imię i Nazwisko:** {pacjent['Imie']} {pacjent['Nazwisko']}")
-            st.write(f"**PESEL:** {pacjent['PESEL']}")
-            st.write(f"**Data urodzenia:** {pacjent['DataUrodzenia']}")
-        else:
-            st.error("Nie znaleziono danych osobowych dla tego numeru PESEL.")
-        
-        st.write(f"**Rodzaj badania:** {wizyta['TypBadania']}")
-        st.write(f"**Data skierowania:** {wizyta['DataWizyty']}")
-    
-    with col2:
-        st.markdown("### 🧠 Inteligentna Analiza Skierowania")
-        notatki_raw = str(wizyta['Notatki'])
-        notatki_lcase = notatki_raw.lower()
-        
-        st.info(f"**Treść skierowania (Stanowisko i zagrożenia):**\n\n{notatki_raw}")
-        
-        # LOGIKA PODPOWIEDZI NA PODSTAWIE SŁOWNIKA
-        sugerowane_konsultacje = set()
-        sugerowane_badania = set()
-        
-        if not df_slownik.empty:
-            for _, regula in df_slownik.iterrows():
-                czynnik_klucz = str(regula['Czynnik']).lower()
-                if czynnik_klucz in notatki_lcase:
-                    kons = str(regula['Konsultacje_Specjalistyczne'])
-                    if kons and kons not in ["—", "nan", "None", ""]:
-                        sugerowane_konsultacje.add(kons)
-                    
-                    diag = str(regula['Badania_Diagnostyczne'])
-                    if diag and diag not in ["—", "nan", "None", ""]:
-                        sugerowane_badania.add(diag)
-        
-        if sugerowane_konsultacje or sugerowane_badania:
-            st.warning("⚠️ **Wymagane konsultacje i badania na podstawie czynników szkodliwych:**")
-            if sugerowane_konsultacje:
-                st.write(f"**Specjaliści:** {', '.join(sugerowane_konsultacje)}")
-            if sugerowane_badania:
-                st.write(f"**Badania diagnostyczne:** {', '.join(sugerowane_badania)}")
-        else:
-            st.success("System nie wykrył specyficznych wymogów prawnych dla podanych czynników.")
+# Wyciągnięcie szczegółów konkretnej wizyty i danych osobowych pacjenta
+wizyta = zaplanowane[zaplanowane['ID_Wizyty'].astype(str) == str(id_wizyty_wybranej)].iloc[0]
+pacjent = df_pacjenci[df_pacjenci['PESEL'].astype(str) == str(wizyta['PESEL_Pacjenta'])].iloc[0]
 
-    st.divider()
+# --- 3. WIDOK BADANIA I FORMULARZ ORZECZNICZY ---
+st.divider()
+col_dane, col_form = st.columns([1, 1.5])
+
+with col_dane:
+    st.markdown("### 👤 Dane Pacjenta")
+    st.write(f"**Imię i Nazwisko:** {pacjent['Imie']} {pacjent['Nazwisko']}")
+    st.write(f"**PESEL:** {pacjent['PESEL']}")
+    st.write(f"**Rodzaj badania:** {wizyta['TypBadania']}")
     
-    # --- FORMULARZ WYSTAWIANIA ORZECZENIA Z PODPISEM CYFROWYM ---
-    st.markdown("### 📝 Decyzja Orzecznicza")
+    st.info(f"**📋 Notatki ze skierowania (Stanowisko/Zagrożenia):**\n\n{wizyta['Notatki']}")
+
+with col_form:
+    st.markdown("### 🩺 Treść Orzeczenia")
+    
     with st.form("orzeczenie_form"):
-        col_dec, col_date = st.columns(2)
+        decyzja = st.radio(
+            "Wynik badania:",
+            ("Zdolny do pracy", "Zdolny z ograniczeniami", "Niezdolny do pracy"),
+            index=0
+        )
         
-        with col_dec:
-            decyzja = st.radio(
-                "Wynik badania profilaktycznego:",
-                ("ZDOLNY do wykonywania pracy.", "NIEZDOLNY do wykonywania pracy.")
-            )
+        # Sugestia kolejnego badania (standardowo +365 dni)
+        data_kolejnego = st.date_input("Ważność orzeczenia do:", value=datetime.date.today() + datetime.timedelta(days=365))
         
-        with col_date:
-            domyslna_data = datetime.date.today() + datetime.timedelta(days=3*365)
-            data_kolejnego = st.date_input("Data następnego badania okresowego:", value=domyslna_data)
-        
-        uwagi_lek = st.text_area("Uwagi lekarza / Ograniczenia / Zalecenia:", height=100)
+        uwagi_lek = st.text_area("Wnioski lekarza, zalecenia lub opis ograniczeń:", height=120)
         
         st.markdown("---")
-        st.subheader("🔐 Autoryzacja i Podpis Elektroniczny")
-        st.write("Wprowadzenie kodu PIN wygeneruje unikalną pieczęć cyfrową (Hash SHA-256) potwierdzającą autentyczność dokumentu.")
-        
-        pin_input = st.text_input("Wprowadź PIN Lekarza:", type="password", help="W celach testowych użyj: 1234")
+        st.subheader("🔐 Autoryzacja Podpisem Cyfrowym")
+        pin_input = st.text_input("Podaj PIN Lekarza (autoryzacja zapisu):", type="password")
 
-        submit_btn = st.form_submit_button("Podpisz i Wystaw Orzeczenie", type="primary")
+        submit_btn = st.form_submit_button("Podpisz i Zakończ Wizytę", type="primary", use_container_width=True)
         
         if submit_btn:
             if not pin_input:
-                st.error("Błąd: Dokument musi zostać zautoryzowany kodem PIN.")
+                st.error("Błąd: Wprowadź kod PIN, aby móc podpisać orzeczenie.")
             else:
-                with st.spinner("Generowanie podpisu cyfrowego i zamykanie wizyty..."):
+                with st.spinner("Generowanie podpisu cyfrowego SHA-256..."):
+                    # Wywołanie zapisu do bazy orzeczeń i zamknięcie wizyty
                     sukces, message = add_orzeczenie_to_db(
                         id_wizyty=wizyta['ID_Wizyty'],
                         pesel=wizyta['PESEL_Pacjenta'],
@@ -136,6 +122,5 @@ if wybrana_etykieta != "--- Wybierz pacjenta ---":
                 if sukces:
                     st.balloons()
                     st.success(message)
-                    st.info("Dokument został zabezpieczony kryptograficznie. Odśwież stronę (F5), aby pobrać kolejnego pacjenta.")
-                else:
-                    st.error(message)
+                    # Wymuszenie czyszczenia cache, aby licznik live i dashboard odświeżyły się natychmiast
+                    st.cache_data.clear()
