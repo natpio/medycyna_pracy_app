@@ -4,3 +4,4 @@ pandas
 fpdf2
 qrcode
 Pillow
+google-api-python-client
