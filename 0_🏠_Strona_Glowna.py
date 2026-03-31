@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-# Importowanie funkcji z pliku db_service.py
+# Import funkcji z pliku db_service.py [cite: 1]
 from db_service import get_data_as_df, apply_pro_style 
 
 # --- 1. KONFIGURACJA STRONY ---
@@ -11,13 +11,12 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Wstrzyknięcie stylów CSS z pliku style.css za pośrednictwem db_service
+# Wstrzyknięcie stylów CSS [cite: 1]
 apply_pro_style()
 
 # --- 2. PASEK BOCZNY ---
 with st.sidebar:
     st.markdown("<br><br>", unsafe_allow_html=True)
-    # Wyświetlanie logo i wersji systemu w stopce menu
     st.markdown(f"""
         <div class="sidebar-footer">
             <img src="https://raw.githubusercontent.com/natpio/medycyna_pracy_app/main/logo_firma.png" width="38" style="border-radius: 8px;">
@@ -31,7 +30,7 @@ with st.sidebar:
 # --- 3. KOMPONENTY UI ---
 
 def render_premium_card(title, value, icon, badge_text, badge_color, badge_bg):
-    """Renderuje karty statystyk (KPI) z niestandardowym HTML."""
+    """Renderuje karty statystyk (KPI)."""
     card_html = f"""
     <div class="premium-card">
         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -49,11 +48,31 @@ def render_premium_card(title, value, icon, badge_text, badge_color, badge_bg):
     """
     st.markdown(card_html, unsafe_allow_html=True)
 
-def render_activity_table_pro(df):
-    """Renderuje ulepszoną tabelę aktywności z danymi pacjentów i firm."""
-    if df is None or df.empty:
-        st.markdown("<p style='color: #64748b; padding: 20px;'>Brak ostatnich aktywności.</p>", unsafe_allow_html=True)
+# --- KROK 1: FRAGMENT ODSWIEŻAJĄCY TABELĘ ---
+@st.fragment(run_every="30s")
+def render_live_activity_table():
+    """Automatycznie odświeżana tabela ostatnich aktywności."""
+    # Pobieranie świeżych danych przy każdym uruchomieniu fragmentu
+    df_wizyty = get_data_as_df("Wizyty")
+    df_pacjenci = get_data_as_df("Pacjenci")
+    df_firmy = get_data_as_df("Firmy")
+
+    if df_wizyty.empty:
+        st.markdown("<p style='color: #64748b; padding: 20px;'>Brak aktywności.</p>", unsafe_allow_html=True)
         return
+
+    # Przygotowanie danych (Merge)
+    df_wizyty['PESEL_Pacjenta'] = df_wizyty['PESEL_Pacjenta'].astype(str)
+    df_pacjenci['PESEL'] = df_pacjenci['PESEL'].astype(str)
+    df_wizyty['NIP_Firmy'] = df_wizyty['NIP_Firmy'].astype(str)
+    df_firmy['NIP'] = df_firmy['NIP'].astype(str)
+
+    df_full = df_wizyty.merge(df_pacjenci[['PESEL', 'Imie', 'Nazwisko']], 
+                             left_on='PESEL_Pacjenta', right_on='PESEL', how='left')
+    df_full = df_full.merge(df_firmy[['NIP', 'NazwaFirmy']], 
+                           left_on='NIP_Firmy', right_on='NIP', how='left')
+    
+    df_display = df_full.tail(6).iloc[::-1]
 
     html = '<div class="custom-table-container"><table style="width: 100%; border-collapse: collapse; background: white;">'
     html += '<thead><tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">'
@@ -62,36 +81,29 @@ def render_activity_table_pro(df):
     html += '<th style="padding: 18px; text-align: center; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Status</th>'
     html += '</tr></thead><tbody>'
 
-    for _, row in df.iterrows():
+    for _, row in df_display.iterrows():
         status = str(row['Status'])
         is_done = (status == "Zakończona")
         bg, txt = ("#d1fae5", "#059669") if is_done else ("#fef3c7", "#d97706")
         icon_bg, icon_color = ("#eff6ff", "#3b82f6") if is_done else ("#fff7ed", "#f97316")
         
-        typ = str(row['TypBadania'])
-        litera = typ[0] if typ else "?"
-        
-        # Dane z połączonych tabel
-        pacjent_name = f"{row.get('Imie', '')} {row.get('Nazwisko', 'Nieznany')}"
-        firma_name = row.get('NazwaFirmy', 'Brak danych firmy')
-        
         row_html = f"""
         <tr class="table-row" style="border-bottom: 1px solid #f1f5f9;">
             <td style="padding: 16px;">
                 <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="width: 38px; height: 38px; background: {icon_bg}; color: {icon_color}; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;">{litera}</div>
+                    <div style="width: 38px; height: 38px; background: {icon_bg}; color: {icon_color}; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700;">{str(row['TypBadania'])[0]}</div>
                     <div>
-                        <div style="color: #0f172a; font-weight: 700; font-size: 0.95rem;">{pacjent_name}</div>
-                        <div style="color: #64748b; font-size: 0.75rem;">{typ}</div>
+                        <div style="color: #0f172a; font-weight: 700; font-size: 0.95rem;">{row['Imie']} {row['Nazwisko']}</div>
+                        <div style="color: #64748b; font-size: 0.75rem;">{row['TypBadania']}</div>
                     </div>
                 </div>
             </td>
             <td style="padding: 16px;">
-                <div style="color: #1e293b; font-weight: 600; font-size: 0.85rem;">{firma_name}</div>
+                <div style="color: #1e293b; font-weight: 600; font-size: 0.85rem;">{row['NazwaFirmy']}</div>
                 <div style="color: #94a3b8; font-size: 0.75rem;">📅 {row['DataWizyty']}</div>
             </td>
             <td style="padding: 16px; text-align: center;">
-                <span style="background: {bg}; color: {txt}; padding: 5px 14px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; display: inline-block;">{status.upper()}</span>
+                <span style="background: {bg}; color: {txt}; padding: 5px 14px; border-radius: 8px; font-size: 0.72rem; font-weight: 700;">{status.upper()}</span>
             </td>
         </tr>
         """
@@ -100,34 +112,9 @@ def render_activity_table_pro(df):
     html += '</tbody></table></div>'
     st.write(html, unsafe_allow_html=True)
 
-# --- 4. LOGIKA DANYCH (POBIERANIE I MERGE) ---
-try:
-    df_wizyty = get_data_as_df("Wizyty")
-    df_pacjenci = get_data_as_df("Pacjenci")
-    df_firmy = get_data_as_df("Firmy")
+# --- 4. LOGIKA GŁÓWNA ---
 
-    if not df_wizyty.empty:
-        # Konwersja typów dla poprawnego łączenia
-        df_wizyty['PESEL_Pacjenta'] = df_wizyty['PESEL_Pacjenta'].astype(str)
-        df_pacjenci['PESEL'] = df_pacjenci['PESEL'].astype(str)
-        df_wizyty['NIP_Firmy'] = df_wizyty['NIP_Firmy'].astype(str)
-        df_firmy['NIP'] = df_firmy['NIP'].astype(str)
-
-        # Łączenie wizyt z nazwami pacjentów i firm
-        df_full = df_wizyty.merge(df_pacjenci[['PESEL', 'Imie', 'Nazwisko']], 
-                                 left_on='PESEL_Pacjenta', right_on='PESEL', how='left')
-        df_full = df_full.merge(df_firmy[['NIP', 'NazwaFirmy']], 
-                               left_on='NIP_Firmy', right_on='NIP', how='left')
-        
-        df_activity = df_full.tail(6).iloc[::-1]
-    else:
-        df_activity = pd.DataFrame()
-except Exception as e:
-    st.error(f"Błąd przetwarzania danych: {e}")
-    df_activity = pd.DataFrame()
-
-# --- 5. WIDOK GŁÓWNY ---
-
+# Nagłówek Dashboardu
 st.markdown("""
     <div style="margin-bottom: 2.5rem;">
         <h1 style="font-weight: 800; color: #0f172a; letter-spacing: -1.8px; margin-bottom: 4px; font-size: 2.8rem;">Dashboard</h1>
@@ -135,25 +122,30 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Sekcja kart KPI
+# Statyczne karty KPI (odświeżają się przy przeładowaniu całej strony)
+df_wizyty_static = get_data_as_df("Wizyty")
+df_pacjenci_static = get_data_as_df("Pacjenci")
+df_firmy_static = get_data_as_df("Firmy")
+
 c1, c2, c3 = st.columns(3)
 with c1:
-    render_premium_card("Pacjenci", str(len(df_pacjenci)), "👥", "Aktywni", "#059669", "#d1fae5")
+    render_premium_card("Pacjenci", str(len(df_pacjenci_static)), "👥", "Aktywni", "#059669", "#d1fae5")
 with c2:
-    render_premium_card("Firmy", str(len(df_firmy)), "🏢", "Kontrakty", "#2563eb", "#dbeafe")
+    render_premium_card("Firmy", str(len(df_firmy_static)), "🏢", "Kontrakty", "#2563eb", "#dbeafe")
 with c3:
     dzis = str(pd.Timestamp.today().date())
-    wiz_dzis = len(df_wizyty[df_wizyty['DataWizyty'].astype(str) == dzis]) if not df_wizyty.empty else 0
+    wiz_dzis = len(df_wizyty_static[df_wizyty_static['DataWizyty'].astype(str) == dzis]) if not df_wizyty_static.empty else 0
     render_premium_card("Wizyty na dziś", str(wiz_dzis), "📅", "Dzisiaj", "#ea580c", "#ffedd5")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# Podział na tabelę i przyciski akcji
+# Dolna sekcja: Tabela (LIVE) i Szybkie Akcje
 col_l, col_r = st.columns([2.2, 1])
 
 with col_l:
-    st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Ostatnie aktywności</h4>", unsafe_allow_html=True)
-    render_activity_table_pro(df_activity)
+    st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Ostatnie aktywności (Auto-Refresh)</h4>", unsafe_allow_html=True)
+    # Wywołanie fragmentu
+    render_live_activity_table()
 
 with col_r:
     st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Szybkie akcje</h4>", unsafe_allow_html=True)
@@ -168,7 +160,7 @@ with col_r:
     st.markdown("""
         <div style="background: #eff6ff; padding: 20px; border-radius: 16px; border: 1px solid #dbeafe;">
             <p style="margin: 0; font-size: 0.82rem; color: #1e40af; line-height: 1.5;">
-                💡 <b>System zautoryzowany:</b><br>Zabezpieczone połączenie z bazą i modułem orzeczeń.
+                💡 <b>System zautoryzowany:</b><br>Tabela aktywności odświeża się automatycznie co 30s.
             </p>
         </div>
     """, unsafe_allow_html=True)
