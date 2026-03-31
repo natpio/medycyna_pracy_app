@@ -1,5 +1,6 @@
 import streamlit as st
 from db_service import add_patient_to_db
+from db_service import get_data_as_df, apply_pro_style
 import datetime
 
 st.set_page_config(page_title="Rejestracja Pacjenta", page_icon="👤")
