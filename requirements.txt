@@ -2,3 +2,5 @@ streamlit
 gspread
 pandas
 fpdf2
+qrcode
+Pillow
