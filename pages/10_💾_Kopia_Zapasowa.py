@@ -2,10 +2,13 @@ import streamlit as st
 import pandas as pd
 import io
 from datetime import datetime
-from db_service import get_data_as_df
 from db_service import get_data_as_df, apply_pro_style
 
+# --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Żelazny Backup", page_icon="💾", layout="centered")
+
+# --- URUCHOMIENIE STYLU PRO ---
+apply_pro_style()
 
 st.markdown("# 💾 Żelazny Backup Systemu")
 st.write("Eksportuj całą bazę danych do jednego, bezpiecznego pliku Excel (.xlsx).")
