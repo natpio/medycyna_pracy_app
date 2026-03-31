@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
-# Importowanie funkcji z Twojego pliku db_service.py
-from db_service import get_data_as_df, apply_pro_style 
+from db_service import get_data_as_df, apply_pro_style
 
-# --- 1. KONFIGURACJA STRONY ---
+# --- 1. KONFIGURACJA ---
 st.set_page_config(
     page_title="Gabinet Medycyny Pracy", 
     page_icon="🏥", 
@@ -11,27 +10,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Wstrzyknięcie stylów CSS z pliku style.css (zarządzane przez db_service)
+# Wstrzyknięcie stylów CSS oraz automatyczne ładowanie Logo i Stopki VORTEZA
 apply_pro_style()
 
-# --- 2. PASEK BOCZNY (SIDEBAR) ---
-with st.sidebar:
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    # Wyświetlanie logo firmy w stopce sidebaru
-    st.markdown(f"""
-        <div class="sidebar-footer">
-            <img src="https://raw.githubusercontent.com/natpio/medycyna_pracy_app/main/logo_firma.png" width="38" style="border-radius: 8px;">
-            <div class="footer-text">
-                <b>MedycynaPracy OS</b><br>
-                v2.1 | Premium Edition
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-
-# --- 3. KOMPONENTY UI (DASHBOARD) ---
+# --- 2. KOMPONENTY PREMIUM UI ---
 
 def render_premium_card(title, value, icon, badge_text, badge_color, badge_bg):
-    """Renderuje karty statystyk (KPI) w stylu Premium."""
+    """Renderuje karty statystyk (KPI)."""
     card_html = f"""
     <div class="premium-card">
         <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -49,67 +34,42 @@ def render_premium_card(title, value, icon, badge_text, badge_color, badge_bg):
     """
     st.markdown(card_html, unsafe_allow_html=True)
 
-# --- KLUCZOWY ELEMENT: AUTOMATYCZNE ODSWIEŻANIE (KROK 1) ---
-@st.fragment(run_every="30s")
-def render_live_activity_table():
-    """Tabela odświeżająca się co 30 sekund bez przeładowania całej strony."""
-    # Pobieranie najświeższych danych z Google Sheets przy każdym cyklu
-    df_wizyty = get_data_as_df("Wizyty")
-    df_pacjenci = get_data_as_df("Pacjenci")
-    df_firmy = get_data_as_df("Firmy")
-
-    if df_wizyty.empty:
-        st.markdown("<p style='color: #64748b; padding: 20px;'>Brak zarejestrowanych aktywności.</p>", unsafe_allow_html=True)
+def render_activity_table(df):
+    """Renderuje tabelę aktywności - wersja 'Bulletproof'."""
+    if df is None or df.empty:
+        st.markdown("<p style='color: #64748b; padding: 20px;'>Brak danych o wizytach.</p>", unsafe_allow_html=True)
         return
 
-    # Przygotowanie i łączenie danych dla czytelności (Merge)
-    df_wizyty['PESEL_Pacjenta'] = df_wizyty['PESEL_Pacjenta'].astype(str)
-    df_pacjenci['PESEL'] = df_pacjenci['PESEL'].astype(str)
-    df_wizyty['NIP_Firmy'] = df_wizyty['NIP_Firmy'].astype(str)
-    df_firmy['NIP'] = df_firmy['NIP'].astype(str)
-
-    df_full = df_wizyty.merge(df_pacjenci[['PESEL', 'Imie', 'Nazwisko']], 
-                             left_on='PESEL_Pacjenta', right_on='PESEL', how='left')
-    df_full = df_full.merge(df_firmy[['NIP', 'NazwaFirmy']], 
-                           left_on='NIP_Firmy', right_on='NIP', how='left')
-    
-    # Wyświetlamy 6 najnowszych rekordów
-    df_display = df_full.tail(6).iloc[::-1]
-
+    # Nagłówek tabeli
     html = '<div class="custom-table-container"><table style="width: 100%; border-collapse: collapse; background: white;">'
     html += '<thead><tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">'
-    html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Pacjent i Badanie</th>'
-    html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Firma / Termin</th>'
-    html += '<th style="padding: 18px; text-align: center; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Status</th>'
+    html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Badanie / Pacjent</th>'
+    html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Termin</th>'
+    html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Status</th>'
     html += '</tr></thead><tbody>'
 
-    for _, row in df_display.iterrows():
+    # Wiersze
+    for _, row in df.iterrows():
         status = str(row['Status'])
         is_done = (status == "Zakończona")
         bg, txt = ("#d1fae5", "#059669") if is_done else ("#fef3c7", "#d97706")
         icon_bg, icon_color = ("#eff6ff", "#3b82f6") if is_done else ("#fff7ed", "#f97316")
         
+        typ = str(row['TypBadania'])
+        litera = typ[0] if typ else "?"
+        
         row_html = f"""
         <tr class="table-row" style="border-bottom: 1px solid #f1f5f9;">
-            <td style="padding: 16px;">
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <div style="width: 38px; height: 38px; background: {icon_bg}; color: {icon_color}; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700;">
-                        {str(row['TypBadania'])[0] if row['TypBadania'] else "?"}
-                    </div>
-                    <div>
-                        <div style="color: #0f172a; font-weight: 700; font-size: 0.95rem;">{row.get('Imie', '')} {row.get('Nazwisko', 'Nieznany')}</div>
-                        <div style="color: #64748b; font-size: 0.75rem;">{row['TypBadania']}</div>
-                    </div>
+            <td style="padding: 16px; display: flex; align-items: center; gap: 12px;">
+                <div style="width: 38px; height: 38px; background: {icon_bg}; color: {icon_color}; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;">{litera}</div>
+                <div>
+                    <div style="color: #0f172a; font-weight: 600; font-size: 0.9rem;">{typ}</div>
+                    <div style="color: #94a3b8; font-size: 0.72rem;">Zarejestrowano</div>
                 </div>
             </td>
+            <td style="padding: 16px; color: #475569; font-size: 0.85rem; font-weight: 500;">{row['DataWizyty']}</td>
             <td style="padding: 16px;">
-                <div style="color: #1e293b; font-weight: 600; font-size: 0.85rem;">{row.get('NazwaFirmy', 'Brak')}</div>
-                <div style="color: #94a3b8; font-size: 0.75rem;">📅 {row['DataWizyty']}</div>
-            </td>
-            <td style="padding: 16px; text-align: center;">
-                <span style="background: {bg}; color: {txt}; padding: 5px 14px; border-radius: 8px; font-size: 0.72rem; font-weight: 700;">
-                    {status.upper()}
-                </span>
+                <span style="background: {bg}; color: {txt}; padding: 5px 14px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; display: inline-block;">{status}</span>
             </td>
         </tr>
         """
@@ -118,9 +78,18 @@ def render_live_activity_table():
     html += '</tbody></table></div>'
     st.write(html, unsafe_allow_html=True)
 
-# --- 4. LOGIKA GŁÓWNA DASHBOARDU ---
+# --- 3. LOGIKA POBIERANIA DANYCH ---
+try:
+    df_wizyty = get_data_as_df("Wizyty")
+    df_pacjenci = get_data_as_df("Pacjenci")
+    df_firmy = get_data_as_df("Firmy")
+except:
+    df_wizyty = pd.DataFrame(columns=['DataWizyty', 'TypBadania', 'Status'])
+    df_pacjenci = df_firmy = pd.DataFrame()
 
-# Nagłówek strony
+# --- 4. WIDOK GŁÓWNY ---
+
+# Nagłówek Dashboardu
 st.markdown("""
     <div style="margin-bottom: 2.5rem;">
         <h1 style="font-weight: 800; color: #0f172a; letter-spacing: -1.8px; margin-bottom: 4px; font-size: 2.8rem;">Dashboard</h1>
@@ -128,35 +97,32 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# Pobranie danych dla statycznych kart KPI (odświeżają się przy przeładowaniu całej strony)
-df_wizyty_st = get_data_as_df("Wizyty")
-df_pacjenci_st = get_data_as_df("Pacjenci")
-df_firmy_st = get_data_as_df("Firmy")
-
-# Górne karty statystyk
+# Górne karty KPI
 c1, c2, c3 = st.columns(3)
 with c1:
-    render_premium_card("Pacjenci", str(len(df_pacjenci_st)), "👥", "Aktywni", "#059669", "#d1fae5")
+    render_premium_card("Pacjenci", str(len(df_pacjenci)), "👥", "Aktywni", "#059669", "#d1fae5")
 with c2:
-    render_premium_card("Firmy", str(len(df_firmy_st)), "🏢", "Kontrakty", "#2563eb", "#dbeafe")
+    render_premium_card("Firmy", str(len(df_firmy)), "🏢", "Kontrakty", "#2563eb", "#dbeafe")
 with c3:
+    # Wykorzystuje zsynchronizowany czas polski z db_service
     dzis = str(pd.Timestamp.today().date())
-    wiz_dzis = len(df_wizyty_st[df_wizyty_st['DataWizyty'].astype(str) == dzis]) if not df_wizyty_st.empty else 0
+    wiz_dzis = len(df_wizyty[df_wizyty['DataWizyty'].astype(str) == dzis]) if not df_wizyty.empty else 0
     render_premium_card("Wizyty na dziś", str(wiz_dzis), "📅", "Dzisiaj", "#ea580c", "#ffedd5")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# Sekcja dolna: Tabela aktywności (Live) i Przyciski akcji
+# Dolna sekcja: Tabela i Szybkie Akcje
 col_l, col_r = st.columns([2.2, 1])
 
 with col_l:
-    st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Ostatnie aktywności (Live)</h4>", unsafe_allow_html=True)
-    # Wywołanie fragmentu, który sam się odświeża co 30 sekund
-    render_live_activity_table()
+    st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Ostatnie aktywności</h4>", unsafe_allow_html=True)
+    if not df_wizyty.empty:
+        render_activity_table(df_wizyty.tail(6).iloc[::-1])
+    else:
+        st.info("Brak aktywności.")
 
 with col_r:
     st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Szybkie akcje</h4>", unsafe_allow_html=True)
-    # Przyciski przełączające podstrony (Streamlit > 1.30.0)
     if st.button("➕ Nowy Pacjent", use_container_width=True):
         st.switch_page("pages/1_👤_Rejestracja_Pacjenta.py")
     if st.button("📅 Zaplanuj Wizytę", use_container_width=True):
@@ -168,7 +134,7 @@ with col_r:
     st.markdown("""
         <div style="background: #eff6ff; padding: 20px; border-radius: 16px; border: 1px solid #dbeafe;">
             <p style="margin: 0; font-size: 0.82rem; color: #1e40af; line-height: 1.5;">
-                💡 <b>System Inteligentny:</b><br>Statusy wizyt w tabeli obok aktualizują się same, gdy lekarz zakończy badanie.
+                💡 <b>System zautoryzowany:</b><br>Zabezpieczone połączenie z bazą i modułem orzeczeń.
             </p>
         </div>
     """, unsafe_allow_html=True)
