@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from db_service import get_data_as_df, apply_pro_style
 
-# --- 1. KONFIGURACJA ---
+# --- 1. KONFIGURACJA STRONY ---
 st.set_page_config(
     page_title="Gabinet Medycyny Pracy", 
     page_icon="🏥", 
@@ -11,12 +11,12 @@ st.set_page_config(
 )
 
 # Wstrzyknięcie stylów CSS (Sidebar, Karty, Tabela)
-apply_pro_style()
+apply_pro_style() [cite: 1]
 
 # --- 2. PASEK BOCZNY ---
 with st.sidebar:
     st.markdown("<br><br>", unsafe_allow_html=True)
-    # Logo na dole sidebaru (Pamiętaj o wgraniu logo_firma.png na GitHub)
+    # Logo na dole sidebaru
     st.markdown(f"""
         <div class="sidebar-footer">
             <img src="https://raw.githubusercontent.com/natpio/medycyna_pracy_app/main/logo_firma.png" width="38" style="border-radius: 8px;">
@@ -25,9 +25,9 @@ with st.sidebar:
                 v2.1 | Premium Edition
             </div>
         </div>
-    """, unsafe_allow_html=True)
+    """, unsafe_allow_html=True) [cite: 1]
 
-# --- 3. KOMPONENTY PREMIUM UI ---
+# --- 3. KOMPONENTY UI (KARTY I TABELA) ---
 
 def render_premium_card(title, value, icon, badge_text, badge_color, badge_bg):
     """Renderuje karty statystyk (KPI)."""
@@ -46,23 +46,21 @@ def render_premium_card(title, value, icon, badge_text, badge_color, badge_bg):
         </div>
     </div>
     """
-    st.markdown(card_html, unsafe_allow_html=True)
+    st.markdown(card_html, unsafe_allow_html=True) [cite: 1]
 
-def render_activity_table(df):
-    """Renderuje tabelę aktywności - wersja 'Bulletproof'."""
+def render_activity_table_pro(df):
+    """Renderuje nowoczesną tabelę z połączonymi danymi pacjenta i firmy."""
     if df is None or df.empty:
-        st.markdown("<p style='color: #64748b; padding: 20px;'>Brak danych o wizytach.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #64748b; padding: 20px;'>Brak ostatnich aktywności.</p>", unsafe_allow_html=True)
         return
 
-    # Nagłówek tabeli
     html = '<div class="custom-table-container"><table style="width: 100%; border-collapse: collapse; background: white;">'
     html += '<thead><tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">'
-    html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Badanie / Pacjent</th>'
-    html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Termin</th>'
-    html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Status</th>'
+    html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Pacjent i Badanie</th>'
+    html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Firma / Termin</th>'
+    html += '<th style="padding: 18px; text-align: center; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Status</th>'
     html += '</tr></thead><tbody>'
 
-    # Wiersze
     for _, row in df.iterrows():
         status = str(row['Status'])
         is_done = (status == "Zakończona")
@@ -72,36 +70,61 @@ def render_activity_table(df):
         typ = str(row['TypBadania'])
         litera = typ[0] if typ else "?"
         
+        # Obsługa nazwisk i firm (pobranych z merge)
+        pacjent_name = f"{row.get('Imie', '')} {row.get('Nazwisko', 'Nieznany')}"
+        firma_name = row.get('NazwaFirmy', 'Brak danych firmy')
+        
         row_html = f"""
         <tr class="table-row" style="border-bottom: 1px solid #f1f5f9;">
-            <td style="padding: 16px; display: flex; align-items: center; gap: 12px;">
-                <div style="width: 38px; height: 38px; background: {icon_bg}; color: {icon_color}; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;">{litera}</div>
-                <div>
-                    <div style="color: #0f172a; font-weight: 600; font-size: 0.9rem;">{typ}</div>
-                    <div style="color: #94a3b8; font-size: 0.72rem;">Zarejestrowano</div>
+            <td style="padding: 16px;">
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <div style="width: 38px; height: 38px; background: {icon_bg}; color: {icon_color}; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;">{litera}</div>
+                    <div>
+                        <div style="color: #0f172a; font-weight: 700; font-size: 0.95rem;">{pacjent_name}</div>
+                        <div style="color: #64748b; font-size: 0.75rem;">{typ}</div>
+                    </div>
                 </div>
             </td>
-            <td style="padding: 16px; color: #475569; font-size: 0.85rem; font-weight: 500;">{row['DataWizyty']}</td>
             <td style="padding: 16px;">
-                <span style="background: {bg}; color: {txt}; padding: 5px 14px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; display: inline-block;">{status}</span>
+                <div style="color: #1e293b; font-weight: 600; font-size: 0.85rem;">{firma_name}</div>
+                <div style="color: #94a3b8; font-size: 0.75rem;">📅 {row['DataWizyty']}</div>
+            </td>
+            <td style="padding: 16px; text-align: center;">
+                <span style="background: {bg}; color: {txt}; padding: 5px 14px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; display: inline-block;">{status.upper()}</span>
             </td>
         </tr>
         """
-        html += row_html.replace('\n', '').strip() # Usuwamy entery i spacje z wiersza
+        html += row_html.replace('\n', '').strip()
 
     html += '</tbody></table></div>'
-    
-    # Wyświetlamy jako jeden blok bez żadnych dodatkowych spacji Streamlitowych
-    st.write(html, unsafe_allow_html=True)
+    st.write(html, unsafe_allow_html=True) [cite: 1]
 
-# --- 4. LOGIKA POBIERANIA DANYCH ---
+# --- 4. LOGIKA POBIERANIA I ŁĄCZENIA DANYCH ---
 try:
     df_wizyty = get_data_as_df("Wizyty")
     df_pacjenci = get_data_as_df("Pacjenci")
-    df_firmy = get_data_as_df("Firmy")
-except:
-    df_wizyty = pd.DataFrame(columns=['DataWizyty', 'TypBadania', 'Status'])
-    df_pacjenci = df_firmy = pd.DataFrame()
+    df_firmy = get_data_as_df("Firmy") [cite: 1]
+
+    # Przygotowanie tabeli do wyświetlenia (Merge)
+    if not df_wizyty.empty:
+        # Konwersja kluczy na string dla pewności połączenia
+        df_wizyty['PESEL_Pacjenta'] = df_wizyty['PESEL_Pacjenta'].astype(str)
+        df_pacjenci['PESEL'] = df_pacjenci['PESEL'].astype(str)
+        df_wizyty['NIP_Firmy'] = df_wizyty['NIP_Firmy'].astype(str)
+        df_firmy['NIP'] = df_firmy['NIP'].astype(str)
+
+        df_full = df_wizyty.merge(df_pacjenci[['PESEL', 'Imie', 'Nazwisko']], 
+                                 left_on='PESEL_Pacjenta', right_on='PESEL', how='left')
+        df_full = df_full.merge(df_firmy[['NIP', 'NazwaFirmy']], 
+                               left_on='NIP_Firmy', right_on='NIP', how='left')
+        
+        # Ostatnie 6 aktywności (najnowsze na górze)
+        df_activity = df_full.tail(6).iloc[::-1]
+    else:
+        df_activity = pd.DataFrame()
+except Exception as e:
+    st.error(f"Błąd przetwarzania danych: {e}")
+    df_activity = pd.DataFrame()
 
 # --- 5. WIDOK GŁÓWNY ---
 
@@ -111,7 +134,7 @@ st.markdown("""
         <h1 style="font-weight: 800; color: #0f172a; letter-spacing: -1.8px; margin-bottom: 4px; font-size: 2.8rem;">Dashboard</h1>
         <p style="color: #64748b; font-size: 1.15rem; font-weight: 500;">Medycyna Pracy | Panel Zarządzania</p>
     </div>
-""", unsafe_allow_html=True)
+""", unsafe_allow_html=True) [cite: 1]
 
 # Górne karty KPI
 c1, c2, c3 = st.columns(3)
@@ -122,7 +145,7 @@ with c2:
 with c3:
     dzis = str(pd.Timestamp.today().date())
     wiz_dzis = len(df_wizyty[df_wizyty['DataWizyty'].astype(str) == dzis]) if not df_wizyty.empty else 0
-    render_premium_card("Wizyty na dziś", str(wiz_dzis), "📅", "Dzisiaj", "#ea580c", "#ffedd5")
+    render_premium_card("Wizyty na dziś", str(wiz_dzis), "📅", "Dzisiaj", "#ea580c", "#ffedd5") [cite: 1]
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -131,11 +154,7 @@ col_l, col_r = st.columns([2.2, 1])
 
 with col_l:
     st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Ostatnie aktywności</h4>", unsafe_allow_html=True)
-    if not df_wizyty.empty:
-        # Sortujemy i bierzemy ostatnie 6
-        render_activity_table(df_wizyty.tail(6).iloc[::-1])
-    else:
-        st.info("Brak aktywności.")
+    render_activity_table_pro(df_activity)
 
 with col_r:
     st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Szybkie akcje</h4>", unsafe_allow_html=True)
@@ -153,4 +172,4 @@ with col_r:
                 💡 <b>System zautoryzowany:</b><br>Zabezpieczone połączenie z bazą i modułem orzeczeń.
             </p>
         </div>
-    """, unsafe_allow_html=True)
+    """, unsafe_allow_html=True) [cite: 1]
