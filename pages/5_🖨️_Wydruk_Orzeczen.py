@@ -42,21 +42,24 @@ def get_secure_signature():
     except Exception as e:
         return None
 
-# --- POBIERANIE CZCIONEK ---
+# --- POBIERANIE CZCIONEK (POPRAWIONE: DODANO ITALIC) ---
 @st.cache_resource
 def load_fonts():
     font_reg = "Roboto-Regular.ttf"
     font_bold = "Roboto-Bold.ttf"
+    font_italic = "Roboto-Italic.ttf"
     try:
         if not os.path.exists(font_reg):
             urllib.request.urlretrieve("https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Regular.ttf", font_reg)
         if not os.path.exists(font_bold):
             urllib.request.urlretrieve("https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Bold.ttf", font_bold)
+        if not os.path.exists(font_italic):
+            urllib.request.urlretrieve("https://github.com/googlefonts/roboto/raw/main/src/hinted/Roboto-Italic.ttf", font_italic)
     except:
         pass
-    return font_reg, font_bold
+    return font_reg, font_bold, font_italic
 
-font_regular, font_bold = load_fonts()
+font_regular, font_bold, font_italic = load_fonts()
 pieczatka_path = get_secure_signature()
 
 # --- KLASA GŁÓWNA PDF ---
@@ -72,12 +75,12 @@ class OrzeczeniePDF(FPDF):
 
 def init_pdf():
     pdf = OrzeczeniePDF()
-    # Wyłączamy auto page break, aby mieć pełną kontrolę nad 3 stronami KBP
     pdf.set_auto_page_break(auto=False)
     pdf.add_page()
-    if os.path.exists(font_regular) and os.path.exists(font_bold):
+    if os.path.exists(font_regular) and os.path.exists(font_bold) and os.path.exists(font_italic):
         pdf.add_font("Roboto", style="", fname=font_regular)
         pdf.add_font("Roboto", style="B", fname=font_bold)
+        pdf.add_font("Roboto", style="I", fname=font_italic) # Rejestracja czcionki pochylonej
         pdf.set_font("Roboto", size=10)
     else:
         pdf.set_font("Arial", size=10)
@@ -87,7 +90,6 @@ def init_pdf():
 def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf = init_pdf()
     
-    # Nagłówek i reszta kodu z poprzedniej, idealnie działającej wersji Orzeczenia
     pdf.set_font("Roboto", style="B", size=8)
     pdf.set_xy(10, 10)
     pdf.multi_cell(100, 4, "INDYWIDUALNA SPECJALISTYCZNA PRAKTYKA LEKARSKA\nMEDYCYNA PRACY lek. med. Jarosław Tarkowski 62-065 Grodzisk Wlkp. Ul. Chopina 18/1\nNIP 788-142-01-53; Regon 631003518; tel. 602 465 777, tel. 794626400, e-mail: jaroslaw.tarkowski@wp.pl", align="L")
@@ -250,7 +252,7 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
 
 # --- 2. GENERATOR: KARTA BADANIA PROFILAKTYCZNEGO (KBP) - 3 STRONY ---
 def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
-    pdf = init_pdf() # Twardy podział stron
+    pdf = init_pdf() 
     
     # ------------------ STRONA 1: DANE OGÓLNE ------------------
     pdf.set_font("Roboto", style="B", size=14)
@@ -263,7 +265,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     pdf.ln(5)
     
-    # Metryczka (zgodnie ze wzorem z KBP.pdf)
     pdf.set_font("Roboto", size=8)
     pdf.cell(60, 6, "Rodzaj badania profilaktycznego", border=1)
     typ_bad = str(wizyta.get('TypBadania', '')).lower()
@@ -278,7 +279,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     pdf.ln(8)
     
-    # 1. DANE OSOBY BADANEJ
     pdf.set_font("Roboto", style="B", size=11)
     pdf.cell(0, 6, "1. DANE OSOBY BADANEJ", ln=1)
     
@@ -296,7 +296,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     pdf.ln(18)
     
-    # 2. DANE PRACODAWCY / STANOWISKO
     pdf.set_font("Roboto", style="B", size=11)
     pdf.cell(0, 6, "2. DANE IDENTYFIKACYJNE MIEJSCA PRACY / POBIERANIA NAUKI", ln=1)
     
@@ -329,7 +328,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     pdf.ln(8)
     
-    # Precyzyjna tabela wywiadu
     pdf.set_font("Roboto", style="B", size=9)
     pdf.cell(110, 8, "Czy badany(a) choruje lub chorował(a) na:", border=1, align="C")
     pdf.cell(15, 8, "TAK", border=1, align="C")
@@ -396,7 +394,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.cell(0, 10, "5. DECYZJA ORZECZNICZA I UWAGI", ln=1)
     
     pdf.set_font("Roboto", size=9)
-    # Odwzorowanie klauzul z pliku KBP.pdf
     pdf.cell(0, 6, "[   ] przeniesienie pracownicy w ciąży / karmiącej dziecko piersią na inne stanowisko pracy", ln=1)
     pdf.cell(0, 6, "[   ] niezdolność do wykonywania dotychczasowej pracy ze względu na stwierdzoną chorobę zawodową", ln=1)
     pdf.cell(0, 6, "[   ] potrzeba stosowania okularów korygujących wzrok podczas pracy przy obsłudze monitora ekranowego", ln=1)
@@ -421,7 +418,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.set_xy(10, y_signatures)
     pdf.cell(100, 6, f"Dokumentację medyczną wydano osobie badanej w dniu: {data_wystawienia}")
     
-    # Pieczątka na KBP
     if signature_path and os.path.exists(signature_path):
         pdf.image(signature_path, x=130, y=y_signatures - 15, w=55)
     else:
