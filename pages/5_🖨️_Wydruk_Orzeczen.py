@@ -2,12 +2,45 @@ import streamlit as st
 import pandas as pd
 import os
 import urllib.request
+import io
+import qrcode
+import datetime
 from fpdf import FPDF
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 from db_service import get_data_as_df, apply_pro_style
 
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Wydruk Orzeczeń", page_icon="🖨️", layout="wide")
 apply_pro_style()
+
+# --- BEZPIECZNE POBIERANIE PIECZĄTKI Z GOOGLE DRIVE ---
+@st.cache_resource
+def get_secure_signature():
+    file_id = st.secrets.get("doctor", {}).get("signature_file_id")
+    if not file_id or file_id == "TUTAJ_WKLEJ_SWOJE_ID_PLIKU_Z_LINKU":
+        return None
+        
+    try:
+        creds = Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"],
+            scopes=['https://www.googleapis.com/auth/drive.readonly']
+        )
+        service = build('drive', 'v3', credentials=creds)
+        request = service.files().get_media(fileId=file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+            
+        temp_path = "temp_secure_signature.png"
+        with open(temp_path, "wb") as f:
+            f.write(fh.getvalue())
+        return temp_path
+    except Exception as e:
+        return None
 
 # --- POBIERANIE CZCIONEK ---
 @st.cache_resource
@@ -24,6 +57,7 @@ def load_fonts():
     return font_reg, font_bold
 
 font_regular, font_bold = load_fonts()
+pieczatka_path = get_secure_signature()
 
 # --- KLASA GŁÓWNA PDF ---
 class OrzeczeniePDF(FPDF):
@@ -49,8 +83,8 @@ def init_pdf():
         pdf.set_font("Arial", size=10)
     return pdf
 
-# --- GŁÓWNY GENERATOR SZABLONU (Wzór z pliku orzeczenie.pdf) ---
-def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma):
+# --- GŁÓWNY GENERATOR SZABLONU ---
+def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf = init_pdf()
     
     # --- NAGŁÓWEK (Lewa strona - Dane lekarza) ---
@@ -86,12 +120,10 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma):
     pdf.set_font("Roboto", style="B", size=12)
     pdf.cell(100, 6, f"{pacjent.get('Imie', '')} {pacjent.get('Nazwisko', '')}")
     
-    # Podpis pod nazwiskiem
     pdf.set_font("Roboto", size=7)
     pdf.set_xy(25, pdf.get_y() + 5)
     pdf.cell(100, 4, "(nazwisko i imię)")
     
-    # Numer PESEL (z odstępami dla czytelności)
     pdf.set_xy(130, pdf.get_y() - 5)
     pdf.set_font("Roboto", size=10)
     pdf.cell(20, 6, "Nr PESEL:")
@@ -100,7 +132,6 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma):
     formatted_pesel = " ".join(list(pesel_str)) if pesel_str else ""
     pdf.cell(50, 6, formatted_pesel)
     
-    # Adres zamieszkania
     pdf.ln(8)
     pdf.set_font("Roboto", size=10)
     pdf.cell(35, 6, "zamieszkały(-ła) w: ")
@@ -117,12 +148,15 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma):
     pdf.set_font("Roboto", style="B", size=11)
     pdf.multi_cell(0, 6, f"{firma.get('NazwaFirmy', '')}, {firma.get('Adres', '')}")
     
-    # --- STANOWISKO ---
+    # --- STANOWISKO (POPRAWIONE ŁAMANIE) ---
     pdf.ln(2)
     pdf.set_font("Roboto", size=10)
-    pdf.cell(80, 6, "na stanowisku / stanowiskach/ stanowisko / stanowiska*): ")
+    pdf.cell(0, 6, "na stanowisku / stanowiskach/ stanowisko / stanowiska*): ", ln=1)
+    
     pdf.set_font("Roboto", style="B", size=11)
     notatki = str(wizyta.get('Notatki', '')).replace('Stanowisko: ', '').split('\n')[0]
+    # Wcięcie dla czytelności stanowiska
+    pdf.set_x(15) 
     pdf.multi_cell(0, 6, notatki)
     
     # --- DECYZJA (CHECKBOXY) ---
@@ -132,29 +166,26 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma):
     
     pdf.set_font("Roboto", size=10)
     
-    # CHECKBOX 1: Zdolny (21)
     pdf.rect(10, pdf.get_y() + 1, 4, 4)
     if jest_zdolny:
         pdf.set_font("Roboto", style="B", size=10)
-        pdf.text(10.5, pdf.get_y() + 4.5, "X") # Krzyżyk
+        pdf.text(10.5, pdf.get_y() + 4.5, "X")
     pdf.set_font("Roboto", size=10)
     pdf.set_xy(16, pdf.get_y())
     pdf.multi_cell(0, 5, "wobec braku przeciwwskazań zdrowotnych jest zdolny(-na) do wykonywania/podjęcia*) pracy na określonym stanowisku (symbol 21)*)")
     
     pdf.ln(3)
     
-    # CHECKBOX 2: Niezdolny (22)
     pdf.rect(10, pdf.get_y() + 1, 4, 4)
     if not jest_zdolny:
         pdf.set_font("Roboto", style="B", size=10)
-        pdf.text(10.5, pdf.get_y() + 4.5, "X") # Krzyżyk
+        pdf.text(10.5, pdf.get_y() + 4.5, "X")
     pdf.set_font("Roboto", size=10)
     pdf.set_xy(16, pdf.get_y())
     pdf.multi_cell(0, 5, "wobec istnienia przeciwwskazań zdrowotnych jest niezdolny(-na) do wykonywania/podjęcia*) pracy na określonym stanowisku (symbol 22)*)")
     
     pdf.ln(3)
     
-    # CHECKBOX 3: Utracił zdolność (23)
     pdf.rect(10, pdf.get_y() + 1, 4, 4)
     pdf.set_xy(16, pdf.get_y())
     pdf.multi_cell(0, 5, "wobec istnienia przeciwwskazań zdrowotnych utracił(a) zdolność do wykonywania dotychczasowej pracy z dniem .................................. (symbol 23)*).")
@@ -177,13 +208,39 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma):
     pdf.set_xy(10, y_signatures + 5)
     pdf.cell(100, 4, "(miejscowość, data)")
     
-    # Pieczątka lekarza (tekstowa, faksymile możemy dodać później w to miejsce)
-    pdf.set_xy(120, y_signatures - 5)
-    pdf.set_font("Roboto", style="B", size=9)
-    pdf.multi_cell(70, 4, "Badanie profilaktyczne przeprowadził:\nJarosław Tarkowski\nspecjalista medycyny pracy\n30/1JT/370\n8776405", align="C")
-    pdf.set_font("Roboto", size=7)
-    pdf.set_xy(120, pdf.get_y() + 10)
-    pdf.cell(70, 4, "(pieczątka i podpis lekarza przeprowadzającego badanie lekarskie)", align="C")
+    # --- KOD QR I ZABEZPIECZENIA ---
+    data_generowania = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    podpis_cyfrowy = str(orz_data.get('Podpis_Cyfrowy', orz_data.get('PodpisCyfrowy', 'Brak autoryzacji')))
+    
+    qr_text = (
+        f"WERYFIKACJA ORZECZENIA LEKARSKIEGO\n"
+        f"Nr orzeczenia: {orz_data.get('ID_Orzeczenia', '')}\n"
+        f"Wygenerowano: {data_generowania}\n\n"
+        f"DANE LEKARZA:\nlek. Jarosław Tarkowski\n"
+        f"CERTYFIKAT AUTENTYCZNOŚCI:\n{podpis_cyfrowy}"
+    )
+    qr = qrcode.make(qr_text)
+    qr_img_bytes = io.BytesIO()
+    qr.save(qr_img_bytes, format='PNG')
+    
+    # Wklejenie QR po lewej stronie
+    pdf.image(qr_img_bytes, x=12, y=y_signatures + 10, w=22)
+    pdf.set_xy(36, y_signatures + 15)
+    pdf.set_font("Roboto", size=6)
+    pdf.multi_cell(60, 3, f"Zatwierdzono Elektronicznie\nlek. Jarosław Tarkowski\nCertyfikat (SHA-256):\n{podpis_cyfrowy}", align="L")
+    
+    # --- PIECZĄTKA / PODPIS LEKARZA ---
+    if signature_path and os.path.exists(signature_path):
+        # Wklejenie obrazu z Dysku Google po prawej stronie
+        pdf.image(signature_path, x=130, y=y_signatures - 10, w=55)
+    else:
+        # Fallback - pieczątka tekstowa
+        pdf.set_xy(120, y_signatures - 5)
+        pdf.set_font("Roboto", style="B", size=9)
+        pdf.multi_cell(70, 4, "Badanie profilaktyczne przeprowadził:\nJarosław Tarkowski\nspecjalista medycyny pracy\n30/1JT/370\n8776405", align="C")
+        pdf.set_font("Roboto", size=7)
+        pdf.set_xy(120, pdf.get_y() + 10)
+        pdf.cell(70, 4, "(pieczątka i podpis lekarza przeprowadzającego badanie lekarskie)", align="C")
     
     # --- BLOK PRAWNY: SYMBOLE I POUCZENIE (Dół strony) ---
     pdf.set_y(220)
@@ -208,9 +265,8 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma):
     return bytes(pdf.output())
 
 # --- KONTROLER / ROUTER SZABLONÓW ---
-def generate_pdf_router(orz_data, wizyta, pacjent, firma):
-    # Domyślny, zaawansowany szablon z załącznika orzeczenie.pdf
-    return create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma), "Zgodne ze Wzorem (KP 43.2)"
+def generate_pdf_router(orz_data, wizyta, pacjent, firma, pieczatka_path):
+    return create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path), "Zgodne ze Wzorem (KP 43.2)"
 
 # --- INTERFEJS UI (STREAMLIT) ---
 st.markdown("# 🖨️ Generator Orzeczeń")
@@ -224,7 +280,6 @@ if not df_orz.empty:
     st.subheader("Lista najnowszych dokumentów do wydruku")
     for _, orz in df_orz.sort_values("ID_Orzeczenia", ascending=False).head(10).iterrows():
         
-        # Ochrona przed brakującymi relacjami
         id_wiz = str(orz.get('ID_Wizyty', ''))
         wiz = df_wiz[df_wiz['ID_Wizyty'].astype(str) == id_wiz].iloc[0] if not df_wiz.empty and id_wiz in df_wiz['ID_Wizyty'].astype(str).values else {}
         
@@ -238,8 +293,7 @@ if not df_orz.empty:
             col_info, col_btn = st.columns([3, 1])
             
             try:
-                # Generowanie na żywo
-                pdf_bytes, typ_szablonu = generate_pdf_router(orz, wiz, pac, fir)
+                pdf_bytes, typ_szablonu = generate_pdf_router(orz, wiz, pac, fir, pieczatka_path)
                 
                 with col_info:
                     st.markdown(f"📄 **{pac.get('Nazwisko', '')} {pac.get('Imie', '')}** (PESEL: {pac.get('PESEL', '')})")
