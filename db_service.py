@@ -82,16 +82,16 @@ def update_record(worksheet_name, id_col_name, id_value, update_dict):
         st.error(f"Błąd aktualizacji bazy: {e}")
         return False
 
-# ZAKTUALIZOWANA FUNKCJA: DODANO PARAMETR "adres"
-def add_patient_to_db(pesel, imie, nazwisko, data_urodzenia, telefon, adres=""):
+# ZAKTUALIZOWANA FUNKCJA: DODANO PARAMETR "adres" (6) i "email" (7)
+def add_patient_to_db(pesel, imie, nazwisko, data_urodzenia, telefon, adres="", email=""):
     sh = get_db_connection()
     ws = sh.worksheet("Pacjenci")
     existing_pesels = ws.col_values(1)
     if str(pesel) in existing_pesels:
         return False, "Pacjent o takim numerze PESEL już istnieje w bazie."
     
-    # Dodajemy adres jako 6. element listy, do nowej kolumny w arkuszu
-    ws.append_row([str(pesel), imie, nazwisko, str(data_urodzenia), telefon, adres])
+    # Dodajemy adres jako 6. i email jako 7. element listy
+    ws.append_row([str(pesel), imie, nazwisko, str(data_urodzenia), telefon, adres, email])
     st.cache_data.clear()
     return True, "Pacjent dodany pomyślnie."
 
@@ -182,7 +182,7 @@ def apply_pro_style():
         st.markdown(f"""<style>[data-testid="stSidebarNav"] {{ background-image: url(data:image/png;base64,{encoded_string}); background-repeat: no-repeat; background-position: center 20px; background-size: 80%; padding-top: 150px !important; }}</style>""", unsafe_allow_html=True)
     
     # 2. Ostateczna poprawka tła (Wymuszenie wyświetlania, omija błędy na telefonach)
-    bg_file = "1775064952136.jpg"  # <-- ZAKTUALIZOWANA NAZWA PLIKU
+    bg_file = "1775064952136.jpg"  
     if os.path.exists(bg_file):
         with open(bg_file, "rb") as bg_image:
             encoded_bg = base64.b64encode(bg_image.read()).decode()
