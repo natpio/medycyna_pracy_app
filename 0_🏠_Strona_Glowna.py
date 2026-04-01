@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date, timedelta
 import calendar
-from db_service import get_data_as_df, apply_pro_style
+from db_service import get_data_as_df, apply_pro_style, add_note_to_db
 
 # --- 1. KONFIGURACJA ---
 st.set_page_config(
@@ -12,12 +12,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Wstrzyknięcie stylów CSS oraz automatyczne ładowanie Logo i Stopki VORTEZA
 apply_pro_style()
 
 # --- FUNKCJE POMOCNICZE DLA KALENDARZA ---
 
 def czy_to_swieto(d):
-    """Sprawdza, czy dana data jest dniem ustawowo wolnym w Polsce (rok 2026)."""
+    """Sprawdza, czy dana data jest dniem ustawowo wolnym w Polsce."""
     rok = d.year
     # Święta stałe
     stale = [
@@ -98,7 +99,7 @@ def render_calendar_grid(df_wizyty):
     days_header = ["Pn", "Wt", "Śr", "Czw", "Pt", "Sob", "Nd"]
     cols_header = st.columns(7)
     for i, day in enumerate(days_header):
-        color = "#ef4444" if i >= 5 else "#64748b" # Czerwony dla nagłówka weekendu
+        color = "#ef4444" if i >= 5 else "#64748b"
         cols_header[i].markdown(f"<div style='text-align: center; color: {color}; font-weight: 700; font-size: 0.75rem; margin-bottom: 5px;'>{day}</div>", unsafe_allow_html=True)
 
     cal = calendar.Calendar(firstweekday=0)
@@ -128,19 +129,13 @@ def render_calendar_grid(df_wizyty):
                 else:
                     bg_color, text_color, border = "#ffffff", "#64748b", "1px solid #e2e8f0"
                 
-                # Treść komórki
-                if is_holiday:
-                    sub_text = "ZAMKNIĘTE"
-                elif wizyty_count > 0:
-                    sub_text = f"👤 {wizyty_count}"
-                else:
-                    sub_text = "&nbsp;"
+                icon_html = f"👤 {wizyty_count}" if wizyty_count > 0 and not is_holiday else ("ZAMKNIĘTE" if is_holiday else "&nbsp;")
                 
                 cell_html = (
                     f"<div style='background:{bg_color}; color:{text_color}; border:{border}; "
-                    f"border-radius:12px; padding:8px; height:65px; text-align:center; transition: 0.3s;'>"
+                    f"border-radius:12px; padding:8px; height:65px; text-align:center; box-shadow:0 2px 4px rgba(0,0,0,0.02);'>"
                     f"<div style='font-size:0.75rem; font-weight:800;'>{day}</div>"
-                    f"<div style='font-size:0.6rem; font-weight:700; margin-top:4px;'>{sub_text}</div>"
+                    f"<div style='font-size:0.6rem; font-weight:700; margin-top:4px;'>{icon_html}</div>"
                     f"</div>"
                 )
                 week_cols[i].markdown(cell_html, unsafe_allow_html=True)
@@ -230,6 +225,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 col_main, col_side = st.columns([2.2, 1])
 
 with col_main:
+    # Radar Obłożenia
     render_calendar_grid(df_wizyty)
     st.markdown("<br>", unsafe_allow_html=True)
     st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Najbliższe wizyty</h4>", unsafe_allow_html=True)
@@ -244,9 +240,38 @@ with col_side:
         st.switch_page("pages/1_👤_Rejestracja_Pacjenta.py")
     if st.button("📅 Zaplanuj Wizytę", use_container_width=True):
         st.switch_page("pages/2_📅_Nowa_Wizyta.py")
-    if st.button("💰 Raport Miesięczny", use_container_width=True):
-        st.switch_page("pages/6_💰_Raporty_i_Finanse.py")
     
+    st.divider()
+    
+    # --- SEKCJA: SZYBKA NOTATKA ---
+    st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 0.8rem;'>📝 Szybka notatka</h4>", unsafe_allow_html=True)
+    
+    with st.container(border=True):
+        nowa_notatka = st.text_area("Wpisz treść...", height=100, label_visibility="collapsed", placeholder="Pamiętaj o...")
+        if st.button("💾 Zapisz notatkę", use_container_width=True):
+            if nowa_notatka:
+                sukces, msg = add_note_to_db(nowa_notatka)
+                if sukces:
+                    st.success(msg)
+                    st.rerun()
+                else:
+                    st.error(msg)
+            else:
+                st.warning("Wpisz treść notatki.")
+
+    # Podgląd ostatniej notatki
+    try:
+        df_n = get_data_as_df("Notatki")
+        if not df_n.empty:
+            ostatnia = df_n.iloc[-1]
+            st.markdown(f"""
+                <div style="background: #f8fafc; padding: 12px; border-radius: 12px; border-left: 4px solid #3b82f6; margin-top: 10px;">
+                    <p style="margin: 0; font-size: 0.7rem; color: #64748b; font-weight: 700; text-transform: uppercase;">Ostatni zapis ({ostatnia['Data']}):</p>
+                    <p style="margin: 5px 0 0 0; font-size: 0.85rem; color: #1e293b; line-height: 1.4;">{ostatnia['Tresc']}</p>
+                </div>
+            """, unsafe_allow_html=True)
+    except: pass
+
     st.markdown("---")
     st.markdown("""
         <div style="background: #eff6ff; padding: 20px; border-radius: 16px; border: 1px solid #dbeafe;">
