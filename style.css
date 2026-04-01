@@ -4,7 +4,10 @@
 /* --- GLOBALNE USTAWIENIA --- */
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif !important;
-    background-color: #f8fafc !important; /* Jasne, nowoczesne tło */
+    background-color: #f8fafc !important; /* Bazowy, jasny kolor */
+    background-image: linear-gradient(rgba(203, 213, 225, 0.25) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(203, 213, 225, 0.25) 1px, transparent 1px) !important;
+    background-size: 30px 30px !important; /* Wielkość kratek */
 }
 
 /* Ukrycie domyślnych elementów Streamlit dla "czystego" wyglądu */
