@@ -11,6 +11,12 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from db_service import get_data_as_df, apply_pro_style
 
+# --- IMPORTY ZEWNĘTRZNYCH SZABLONÓW ---
+try:
+    from pdf_templates.pdf_sanepid import create_sanepid_pdf
+except ImportError:
+    st.error("Błąd: Nie znaleziono modułu pdf_templates.pdf_sanepid. Upewnij się, że utworzyłeś ten folder i plik.")
+
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Wydruk Orzeczeń", page_icon="🖨️", layout="wide")
 apply_pro_style()
@@ -250,13 +256,11 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     return bytes(pdf.output())
 
 
-# --- 2. GENERATOR: KARTA BADANIA PROFILAKTYCZNEGO (KBP) - Wierna kopia wzoru ---
+# --- 2. GENERATOR: KARTA BADANIA PROFILAKTYCZNEGO (KBP) ---
 def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf = init_pdf() 
     
     # --- STRONA 1: DANE OGÓLNE I ZATRUDNIENIE ---
-    
-    # Pieczęć i Tytuł
     pdf.set_font("Roboto", size=8)
     pdf.rect(10, 10, 40, 18)
     pdf.set_xy(10, 16)
@@ -272,13 +276,11 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     pdf.set_font("Roboto", size=8)
     pdf.set_xy(60, 26)
-    # Wyciąganie numeru z ID
     nr_bad = orz_data.get('ID_Orzeczenia', '')[-6:] if orz_data.get('ID_Orzeczenia') else '......'
     pdf.cell(130, 4, f"(nr kolejny badania {nr_bad})", align="C", ln=1)
     
     pdf.ln(5)
     
-    # Metryczka systemowa
     pdf.set_font("Roboto", size=7)
     pdf.cell(50, 4, "Rodzaj badania profilaktycznego", border=1)
     typ_bad = str(wizyta.get('TypBadania', '')).lower()
@@ -295,7 +297,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     pdf.ln(5)
     
-    # 1. DANE OSOBY BADANEJ
     y_start = pdf.get_y()
     pdf.draw_form_box(10, y_start, 95, 10, "Nazwisko i imię", f"{pacjent.get('Nazwisko', '')} {pacjent.get('Imie', '')}", is_bold=True)
     pesel_str = str(pacjent.get('PESEL', ''))
@@ -313,7 +314,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     pdf.ln(13)
     
-    # 2. DANE PRACODAWCY / STANOWISKO
     pdf.set_font("Roboto", style="B", size=8)
     pdf.cell(0, 4, "Dane identyfikacyjne miejsca pracy / pobierania nauki:", ln=1)
     
@@ -353,7 +353,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     pdf.ln(23)
     
-    # TABELA ZATRUDNIENIA
     pdf.set_font("Roboto", style="B", size=8)
     pdf.cell(0, 4, "Dotychczasowe zatrudnienie / dotychczasowa praktyczna nauka zawodu, studia lub studia doktoranckie", ln=1)
     
@@ -373,7 +372,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
         
     pdf.ln(5)
     
-    # WYWIAD ZAWODOWY
     pdf.set_font("Roboto", style="B", size=8)
     pdf.cell(0, 4, "Czy w przebiegu pracy zawodowej:", ln=1)
     pdf.set_font("Roboto", size=8)
@@ -381,7 +379,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.cell(0, 5, "b) lekarz wnioskował o zmianę stanowiska pracy ze względu na stan zdrowia?  [  ] Nie   [  ] Tak  kiedy? ......................", ln=1)
     pdf.cell(0, 5, "c) badany(a) uległ(a) wypadkowi w pracy?  [  ] Nie   [  ] Tak  kiedy? ........................ z jakiego powodu? ......................", ln=1)
     pdf.cell(0, 5, "d) orzeczono świadczenia rentowe? / stopień niepełnosprawności?  [  ] Nie   [  ] Tak  stopień/symbol: .........................", ln=1)
-    
     
     # --- STRONA 2: WYWIAD CHOROBOWY I BADANIE PRZEDMIOTOWE ---
     pdf.add_page()
@@ -394,7 +391,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     pdf.ln(3)
     
-    # Tabela Wywiadu Chorobowego (Idealna kopia KBP)
     pdf.set_font("Roboto", style="B", size=7)
     pdf.cell(90, 6, "Czy badany(a) choruje lub chorował(a) na:", border=1, align="C")
     pdf.cell(10, 6, "Tak", border=1, align="C")
@@ -427,7 +423,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
         pdf.cell(10, 5, "", border=1)
         pdf.cell(80, 5, "", border=1, ln=1)
         
-    # Pytania dodatkowe w tabeli
     pdf.cell(90, 5, "U kobiet: Data ostatniej miesiączki: ........................", border=1)
     pdf.cell(100, 5, " cyklu: Tak / Nie; porody: .........; poronienia: .........; leki hormonalne: .........", border=1, ln=1)
     
@@ -441,7 +436,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     pdf.ln(4)
     
-    # Dodatkowy wywiad
     pdf.set_font("Roboto", size=8)
     pdf.cell(0, 5, "Wywiad rodzinny: alergie, astma, cukrzyca, chor.psychiczne, choroby serca, nadciśnienie tętnicze, nowotwory, inne:", ln=1)
     pdf.cell(0, 5, "........................................................................................................................................................................................", ln=1)
@@ -464,7 +458,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     pdf.ln(4)
     
-    # Badanie przedmiotowe
     pdf.set_font("Roboto", style="B", size=10)
     pdf.cell(0, 6, "Badanie przedmiotowe*", ln=1)
     
@@ -477,7 +470,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     
     pdf.ln(3)
     
-    # Tabela Układów i Narządów
     pdf.set_font("Roboto", style="B", size=7)
     pdf.cell(40, 5, "Narząd / Układ", border=1, align="C")
     pdf.cell(15, 5, "Norma", border=1, align="C")
@@ -501,11 +493,9 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
     pdf.set_font("Roboto", size=6)
     pdf.cell(0, 4, "*Odpowiednie rubryki wypełnia się przez postawienie znaku \"X\", przy czym stwierdzenie patologii powinno być uzupełnione jej opisem. N.B. - Nie Badano", ln=1)
     
-    
     # --- STRONA 3: BADANIA POMOCNICZE I DECYZJA ---
     pdf.add_page()
     
-    # Tabela Badania Pomocnicze
     pdf.set_font("Roboto", style="B", size=9)
     pdf.cell(0, 5, "Badania pomocnicze", ln=1)
     pdf.set_font("Roboto", size=7)
@@ -523,7 +513,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
         
     pdf.ln(5)
     
-    # Tabela Konsultacje Specjalistyczne
     pdf.set_font("Roboto", style="B", size=9)
     pdf.cell(0, 5, "Konsultacje specjalistyczne", ln=1)
     pdf.set_font("Roboto", size=7)
@@ -541,7 +530,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
         
     pdf.ln(5)
     
-    # Inne uwagi
     pdf.set_font("Roboto", size=8)
     pdf.cell(0, 5, "[  ] Zakres badań poszerzony poza wskazówki metodyczne   NIE / TAK   Uzasadnienie: ..............................................................", ln=1)
     pdf.cell(0, 5, "[  ] Zmiana częstotliwości wykonywania badań okresowych: NIE / TAK   Uzasadnienie: ..............................................................", ln=1)
@@ -615,7 +603,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
         pdf.set_xy(120, pdf.get_y() + 5)
         pdf.cell(70, 4, "Pieczęć i podpis lekarza :", align="C")
 
-    # Potwierdzenie odbioru (stopka)
     pdf.set_y(260)
     pdf.set_font("Roboto", size=7)
     pdf.cell(10, 5, "Lp", border=1, align="C")
@@ -633,10 +620,15 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path):
 
 # --- KONTROLER / ROUTER SZABLONÓW ---
 def generate_pdf_router(typ_dokumentu, orz_data, wizyta, pacjent, firma, pieczatka_path):
+    # Pakujemy czcionki do przekazania zewnętrznym modułom (np. dla Sanepid)
+    fonts = (font_regular, font_bold, font_italic)
+    
     if typ_dokumentu == "Orzeczenie Lekarskie":
         return create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path)
     elif typ_dokumentu == "Karta Badania (KBP)":
         return create_kbp_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path)
+    elif typ_dokumentu == "Orzeczenie Sanepid":
+        return create_sanepid_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
     else:
         raise ValueError("Nieznany typ dokumentu")
 
@@ -670,9 +662,10 @@ if not df_orz.empty:
                 st.caption(f"PESEL: {pac.get('PESEL', '')} | Firma: {fir.get('NazwaFirmy', '')}")
             
             with col_doc:
+                # DODANO OPCJĘ "Orzeczenie Sanepid" DO LISTY
                 typ_dokumentu = st.selectbox(
                     "Wybierz dokument:",
-                    ["Orzeczenie Lekarskie", "Karta Badania (KBP)"],
+                    ["Orzeczenie Lekarskie", "Karta Badania (KBP)", "Orzeczenie Sanepid"],
                     key=f"sel_{orz.get('ID_Orzeczenia', '')}",
                     label_visibility="collapsed"
                 )
