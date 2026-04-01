@@ -6,14 +6,9 @@ html, body, [class*="css"] {
     font-family: 'Inter', sans-serif !important;
 }
 
-/* Wymuszenie tła specjalnie na głównych kontenerach Streamlita - Delikatne fale */
+/* Usuwamy sztuczne wzory, tło obrazkowe wczyta db_service.py. Dajemy tylko kolor zapasowy */
 .stApp, [data-testid="stAppViewContainer"] {
-    background-color: #f8fafc !important; /* Bazowy, jasny kolor */
-    background-image: 
-        radial-gradient(circle at 100% 150%, #f8fafc 24%, #e2e8f0 25%, #e2e8f0 28%, transparent 29%),
-        radial-gradient(circle at 0% 150%, #f8fafc 24%, #e2e8f0 25%, #e2e8f0 28%, transparent 29%) !important;
-    background-size: 40px 20px !important; /* Rozmiar pojedynczej fali */
-    background-position: 0 0, 0 0 !important;
+    background-color: #f8fafc !important; 
 }
 
 /* Ukrycie domyślnych elementów Streamlit dla "czystego" wyglądu */
