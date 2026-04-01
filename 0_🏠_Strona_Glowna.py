@@ -12,6 +12,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Wstrzyknięcie stylów CSS oraz automatyczne ładowanie Logo i Stopki VORTEZA
 apply_pro_style()
 
 # --- 2. KOMPONENTY PREMIUM UI ---
@@ -36,7 +37,7 @@ def render_premium_card(title, value, icon, badge_text, badge_color, badge_bg):
     st.markdown(card_html, unsafe_allow_html=True)
 
 def render_calendar_grid(df_wizyty):
-    """Generuje wizualną siatkę kalendarza z obłożeniem."""
+    """Generuje wizualną siatkę kalendarza z obłożeniem - Naprawiona wersja bez błędów div."""
     dzis = date.today()
     rok, miesiac = dzis.year, dzis.month
     
@@ -48,15 +49,17 @@ def render_calendar_grid(df_wizyty):
     
     # Przygotowanie danych (zliczanie wizyt na dzień)
     if not df_wizyty.empty:
-        counts = df_wizyty['DataWizyty_dt'].value_counts().to_dict()
+        # Upewniamy się, że operujemy na datach, nie na stringach
+        df_wizyty['temp_date'] = pd.to_datetime(df_wizyty['DataWizyty'], errors='coerce').dt.date
+        counts = df_wizyty['temp_date'].value_counts().to_dict()
     else:
         counts = {}
 
     # Nagłówki dni tygodnia
     days_header = ["Pn", "Wt", "Śr", "Czw", "Pt", "Sob", "Nd"]
-    cols = st.columns(7)
+    cols_header = st.columns(7)
     for i, day in enumerate(days_header):
-        cols[i].markdown(f"<div style='text-align: center; color: #64748b; font-weight: 700; font-size: 0.8rem; margin-bottom: 5px;'>{day}</div>", unsafe_allow_html=True)
+        cols_header[i].markdown(f"<div style='text-align: center; color: #64748b; font-weight: 700; font-size: 0.75rem; margin-bottom: 5px;'>{day}</div>", unsafe_allow_html=True)
 
     # Logika kalendarza
     cal = calendar.Calendar(firstweekday=0)
@@ -66,7 +69,7 @@ def render_calendar_grid(df_wizyty):
         week_cols = st.columns(7)
         for i, day in enumerate(week):
             if day == 0:
-                week_cols[i].markdown("<div style='height: 60px;'></div>", unsafe_allow_html=True)
+                week_cols[i].markdown("<div style='height: 65px;'></div>", unsafe_allow_html=True)
             else:
                 curr_date = date(rok, miesiac, day)
                 wizyty_count = counts.get(curr_date, 0)
@@ -76,25 +79,19 @@ def render_calendar_grid(df_wizyty):
                 bg_color = "#1e3a8a" if is_today else ("#eff6ff" if wizyty_count > 0 else "#ffffff")
                 text_color = "#ffffff" if is_today else ("#1e40af" if wizyty_count > 0 else "#64748b")
                 border = "2px solid #3b82f6" if is_today else "1px solid #e2e8f0"
+                shadow = "0 4px 6px rgba(30, 58, 138, 0.2)" if is_today else "0 2px 4px rgba(0,0,0,0.02)"
                 
-                cell_content = f"""
-                <div style="
-                    background: {bg_color}; 
-                    color: {text_color}; 
-                    border: {border}; 
-                    border-radius: 12px; 
-                    padding: 8px; 
-                    height: 65px; 
-                    text-align: center;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-                ">
-                    <div style="font-size: 0.75rem; font-weight: 800;">{day}</div>
-                    <div style="font-size: 0.85rem; font-weight: 700; margin-top: 4px;">
-                        {"👤 " + str(wizyty_count) if wizyty_count > 0 else ""}
-                    </div>
-                </div>
-                """
-                week_cols[i].markdown(cell_content, unsafe_allow_html=True)
+                # Budowanie HTML w jednej linii, aby uniknąć błędów renderowania Streamlit
+                icon_html = f"👤 {wizyty_count}" if wizyty_count > 0 else "&nbsp;"
+                
+                cell_html = (
+                    f"<div style='background:{bg_color}; color:{text_color}; border:{border}; "
+                    f"border-radius:12px; padding:8px; height:65px; text-align:center; box-shadow:{shadow};'>"
+                    f"<div style='font-size:0.75rem; font-weight:800;'>{day}</div>"
+                    f"<div style='font-size:0.85rem; font-weight:700; margin-top:4px;'>{icon_html}</div>"
+                    f"</div>"
+                )
+                week_cols[i].markdown(cell_html, unsafe_allow_html=True)
 
 def render_activity_table(df):
     """Renderuje tabelę aktywności."""
@@ -178,16 +175,15 @@ with c3:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# GŁÓWNA SEKCJA: KALENDARZ I TABELA
 col_main, col_side = st.columns([2.2, 1])
 
 with col_main:
-    # Sekcja kalendarza
+    # Radar Obłożenia
     render_calendar_grid(df_wizyty)
     
     st.markdown("<br>", unsafe_allow_html=True)
     
-    # Sekcja tabeli
+    # Tabela aktywności
     st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Najbliższe wizyty</h4>", unsafe_allow_html=True)
     if not df_do_tabeli.empty:
         render_activity_table(df_do_tabeli)
