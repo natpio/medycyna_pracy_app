@@ -4,31 +4,37 @@ from fpdf import FPDF
 
 class KartaBadaniaPDF(FPDF):
     def strike_text(self, text, h=4):
-        """Rysuje tekst i przekreśla go poziomą linią"""
         x, y = self.get_x(), self.get_y()
         w = self.get_string_width(text)
         self.cell(w, h, text)
         self.line(x, y + h/2.2, x + w, y + h/2.2)
 
-    def print_options(self, options, selected_idx, h=4, spacer="; "):
-        """Formatuje listę opcji: wybrana jest pogrubiona, reszta skreślona"""
+    def print_options(self, options, selected_idx, h=4, spacer="; ", max_x=195):
+        start_x = self.get_x()
         for i, opt in enumerate(options):
+            opt_w = self.get_string_width(opt)
+            spacer_w = self.get_string_width(spacer) if i < len(options)-1 else 0
+            
+            # Bezpieczne łamanie do nowej linii dla długich wyliczanek (np. metryczki)
+            if self.get_x() + opt_w + spacer_w > max_x:
+                self.ln(h)
+                self.set_x(start_x)
+                
             if i == selected_idx:
                 self.set_font("Roboto", style="B")
-                self.cell(self.get_string_width(opt), h, opt)
+                self.cell(opt_w, h, opt)
                 self.set_font("Roboto", style="")
             else:
                 self.strike_text(opt, h)
-            
+                
             if i < len(options) - 1:
-                self.cell(self.get_string_width(spacer), h, spacer)
+                self.cell(spacer_w, h, spacer)
 
-    def strike_multicell(self, x, y, w, h, text):
-        """Pisze wielowierszowy tekst i przekreśla cały blok jedną długą linią na środku"""
-        self.set_xy(x, y)
-        self.multi_cell(w, h, text)
-        y_end = self.get_y()
-        self.line(x, y + (y_end - y)/2, x + w if w > 0 else 190, y + (y_end - y)/2)
+    def strike_block(self, y_start, y_end, line_h=4, x_start=10, x_end=190):
+        curr_y = y_start
+        while curr_y < y_end - 1:
+            self.line(x_start, curr_y + line_h/2.2, x_end, curr_y + line_h/2.2)
+            curr_y += line_h
 
     def draw_form_box(self, x, y, w, h, label, value, is_bold=False):
         self.set_xy(x, y)
@@ -76,40 +82,33 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     
     pdf.ln(5)
     
-    # --- METRYCZKA ZE SKREŚLENIAMI ---
+    # Metryczka (zwiększona wysokość komórek, aby pomieścić ew. łamanie linii)
     pdf.set_font("Roboto", size=7)
-    pdf.cell(50, 4, "Rodzaj badania profilaktycznego", border=1)
-    
+    pdf.cell(50, 6, "Rodzaj badania profilaktycznego", border=1)
     x_start, y_start = pdf.get_x(), pdf.get_y()
-    pdf.cell(140, 4, "", border=1) # Rysuje pustą ramkę
-    pdf.set_xy(x_start + 2, y_start)
-    
+    pdf.cell(140, 6, "", border=1)
+    pdf.set_xy(x_start + 2, y_start + 1)
     typ_bad = str(wizyta.get('TypBadania', 'okresowe')).lower()
     idx_bad = 0 if "wstępne" in typ_bad else (1 if "okresowe" in typ_bad else 2)
     pdf.print_options(["wstępne (W)", "okresowe (O)", "kontrolne (K)"], idx_bad, 4)
+    pdf.set_xy(10, y_start + 6)
     
-    pdf.set_xy(x_start + 140, y_start)
-    pdf.ln(4)
-    
-    pdf.cell(50, 4, "Pozostała działalność profilaktyczna", border=1)
+    pdf.cell(50, 8, "Pozostała działalność profilaktyczna", border=1)
     x_start, y_start = pdf.get_x(), pdf.get_y()
-    pdf.cell(140, 4, "", border=1)
-    pdf.set_xy(x_start + 2, y_start)
-    # Domyślnie skreślamy wszystko z działalności profilaktycznej (brak opcji)
-    pdf.print_options(["monitoring stanu zdrowia (M)", "badania celowane (C)", "czynne poradnictwo (D)", "inne (I)"], -1, 4)
-    pdf.set_xy(x_start + 140, y_start)
-    pdf.ln(4)
+    pdf.cell(140, 8, "", border=1)
+    pdf.set_xy(x_start + 2, y_start + 1)
+    pdf.print_options(["monitoring stanu zdrowia (M)", "badania celowane (C)", "czynne poradnictwo (D)", "inne (I)"], -1, 4, max_x=195)
+    pdf.set_xy(10, y_start + 8)
     
-    pdf.cell(50, 4, "Objęty opieką jako", border=1)
+    pdf.cell(50, 8, "Objęty opieką jako", border=1)
     x_start, y_start = pdf.get_x(), pdf.get_y()
-    pdf.cell(140, 4, "", border=1)
-    pdf.set_xy(x_start + 2, y_start)
-    # Domyślnie zaznaczamy pracownik (P), resztę skreślamy
-    pdf.print_options(["pracownik (P)", "praca nakładcza (N)", "pobierający naukę (U)", "na własny wniosek (W)"], 0, 4)
-    pdf.set_xy(x_start + 140, y_start)
+    pdf.cell(140, 8, "", border=1)
+    pdf.set_xy(x_start + 2, y_start + 1)
+    pdf.print_options(["pracownik (P)", "praca nakładcza (N)", "pobierający naukę (U)", "na własny wniosek (W)"], 0, 4, max_x=195)
+    pdf.set_xy(10, y_start + 8)
+    
     pdf.ln(5)
     
-    # DANE OSOBY
     y_start = pdf.get_y()
     pdf.draw_form_box(10, y_start, 95, 10, "Nazwisko i imię", f"{pacjent.get('Nazwisko', '')} {pacjent.get('Imie', '')}", is_bold=True)
     pesel_str = str(pacjent.get('PESEL', ''))
@@ -146,18 +145,19 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     
     pdf.set_y(pdf.get_y() + 12)
     pdf.set_font("Roboto", size=8)
-    pdf.cell(100, 5, "Skierowanie od pracodawcy / placówki dydaktycznej")
-    # Skreślamy NIE, zostawiamy TAK
+    
+    # Skreślenia w bloku skierowań (w jednej linii)
+    pdf.cell(pdf.get_string_width("Skierowanie od pracodawcy / placówki dydaktycznej:   "), 5, "Skierowanie od pracodawcy / placówki dydaktycznej:   ")
     pdf.print_options(["TAK", "NIE"], 0, 5, spacer=" / ")
     pdf.set_x(150)
     pdf.cell(50, 5, f"Data: {wizyta.get('DataWizyty', '...........')}", ln=1)
     
-    pdf.cell(100, 5, "Informacja o czynnikach szkodliwych na stanowisku pracy / nauki")
+    pdf.cell(pdf.get_string_width("Informacja o czynnikach szkodliwych na stanowisku pracy / nauki:   "), 5, "Informacja o czynnikach szkodliwych na stanowisku pracy / nauki:   ")
     pdf.print_options(["TAK", "NIE"], 0, 5, spacer=" / ")
     pdf.set_x(150)
     pdf.cell(50, 5, "Wyniki pomiarów:   TAK / NIE", ln=1)
     
-    pdf.cell(100, 5, "Informacja o czynnikach uciążliwych na stanowisku pracy / nauki")
+    pdf.cell(pdf.get_string_width("Informacja o czynnikach uciążliwych na stanowisku pracy / nauki:   "), 5, "Informacja o czynnikach uciążliwych na stanowisku pracy / nauki:   ")
     pdf.print_options(["TAK", "NIE"], 0, 5, spacer=" / ")
     pdf.set_x(150)
     pdf.cell(50, 5, "Data badania: ........................", ln=1)
@@ -186,15 +186,28 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
         
     pdf.ln(5)
     
+    # WYWIAD ZAWODOWY Z PRZEKREŚLENIAMI "NIE"
     pdf.set_font("Roboto", style="B", size=8)
     pdf.cell(0, 4, "Czy w przebiegu pracy zawodowej:", ln=1)
     pdf.set_font("Roboto", size=8)
-    pdf.cell(0, 5, "a) stwierdzono chorobę zawodową?  Tak / Nie  jaką? .................................... Nr z wykazu chorób: ...........", ln=1)
-    pdf.cell(0, 5, "b) lekarz wnioskował o zmianę stanowiska pracy ze względu na stan zdrowia?  Tak / Nie  kiedy? ......................", ln=1)
-    pdf.cell(0, 5, "c) badany(a) uległ(a) wypadkowi w pracy?  Tak / Nie  kiedy? ........................ z jakiego powodu? ......................", ln=1)
-    pdf.cell(0, 5, "d) orzeczono świadczenia rentowe? / stopień niepełnosprawności?  Tak / Nie  stopień/symbol: .........................", ln=1)
     
-    # --- STRONA 2 ---
+    pdf.cell(pdf.get_string_width("a) stwierdzono chorobę zawodową?  "), 5, "a) stwierdzono chorobę zawodową?  ")
+    pdf.print_options(["Tak", "Nie"], 1, 5, " / ")
+    pdf.cell(0, 5, "  jaką? .................................... Nr z wykazu chorób: ...........", ln=1)
+    
+    pdf.cell(pdf.get_string_width("b) lekarz wnioskował o zmianę stanowiska pracy ze względu na stan zdrowia?  "), 5, "b) lekarz wnioskował o zmianę stanowiska pracy ze względu na stan zdrowia?  ")
+    pdf.print_options(["Tak", "Nie"], 1, 5, " / ")
+    pdf.cell(0, 5, "  kiedy? ......................", ln=1)
+    
+    pdf.cell(pdf.get_string_width("c) badany(a) uległ(a) wypadkowi w pracy?  "), 5, "c) badany(a) uległ(a) wypadkowi w pracy?  ")
+    pdf.print_options(["Tak", "Nie"], 1, 5, " / ")
+    pdf.cell(0, 5, "  kiedy? ........................ z jakiego powodu? ......................", ln=1)
+    
+    pdf.cell(pdf.get_string_width("d) orzeczono świadczenia rentowe? / stopień niepełnosprawności?  "), 5, "d) orzeczono świadczenia rentowe? / stopień niepełnosprawności?  ")
+    pdf.print_options(["Tak", "Nie"], 1, 5, " / ")
+    pdf.cell(0, 5, "  stopień/symbol: .........................", ln=1)
+    
+    # --- STRONA 2: WYWIAD CHOROBOWY I BADANIE PRZEDMIOTOWE ---
     pdf.add_page()
     pdf.set_font("Roboto", style="B", size=10)
     pdf.cell(0, 6, "Badanie Podmiotowe:", ln=1)
@@ -245,7 +258,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.cell(10, 5, "", border=1)
     pdf.cell(80, 5, "", border=1, ln=1)
     
-    pdf.cell(90, 5, "Palenie tytoniu obecnie [ ]    w przeszłości [ ]", border=1)
+    pdf.cell(90, 5, "Palenie tytoniu: obecnie [ ]  w przeszłości [ ]  nie palę [ ]", border=1)
     pdf.cell(100, 5, " Inne używki  Nie / Tak   jakie? ..............................................................", border=1, ln=1)
     
     pdf.ln(4)
@@ -256,7 +269,9 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     
     pdf.ln(2)
     pdf.cell(0, 5, "Subiektywna ocena stanu zdrowia:", ln=1)
-    pdf.cell(0, 5, "Bardzo Dobre / Dobre / Raczej dobre / Raczej słabe / Słabe    opis uwagi: .......................................", ln=1)
+    pdf.cell(pdf.get_string_width(" "), 5, " ")
+    pdf.print_options(["Bardzo Dobre", "Dobre", "Raczej dobre", "Raczej słabe", "Słabe"], 1, 5, " / ")
+    pdf.cell(0, 5, "    opis uwagi: .......................................", ln=1)
     
     pdf.ln(2)
     pdf.cell(0, 5, "Czy badany(a) przebył(a) zabieg / i operacyjny/e? Jakie? Kiedy? ....................................................................................", ln=1)
@@ -305,7 +320,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
         pdf.cell(105, 5, "", border=1, ln=1)
         
     pdf.set_font("Roboto", size=6)
-    pdf.cell(0, 4, "*Odpowiednie rubryki wypełnia się przez postawienie znaku \"X\", przy czym stwierdzenie patologii powinno być uzupełnione jej opisem. N.B. - Nie Badano", ln=1)
+    pdf.cell(0, 4, "*Niewłaściwe skreślić, przy czym stwierdzenie patologii powinno być uzupełnione jej opisem. N.B. - Nie Badano", ln=1)
     
     # --- STRONA 3: BADANIA POMOCNICZE I DECYZJA ---
     pdf.add_page()
@@ -345,8 +360,13 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.ln(5)
     
     pdf.set_font("Roboto", size=8)
-    pdf.cell(0, 5, "Zakres badań poszerzony poza wskazówki metodyczne   NIE / TAK   Uzasadnienie: ..............................................................", ln=1)
-    pdf.cell(0, 5, "Zmiana częstotliwości wykonywania badań okresowych: NIE / TAK   Uzasadnienie: ..............................................................", ln=1)
+    pdf.cell(pdf.get_string_width("Zakres badań poszerzony poza wskazówki metodyczne:   "), 5, "Zakres badań poszerzony poza wskazówki metodyczne:   ")
+    pdf.print_options(["NIE", "TAK"], 0, 5, " / ")
+    pdf.cell(0, 5, "   Uzasadnienie: ..............................................................", ln=1)
+    
+    pdf.cell(pdf.get_string_width("Zmiana częstotliwości wykonywania badań okresowych:   "), 5, "Zmiana częstotliwości wykonywania badań okresowych:   ")
+    pdf.print_options(["NIE", "TAK"], 0, 5, " / ")
+    pdf.cell(0, 5, "   Uzasadnienie: ..............................................................", ln=1)
     
     pdf.ln(3)
     pdf.cell(0, 5, "Rozpoznanie: ..............................................................................................................................................................................", ln=1)
@@ -363,7 +383,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     
     pdf.ln(5)
     
-    # 5. DECYZJA ORZECZNICZA ZE SKREŚLENIAMI AKAPITÓW
+    # 5. DECYZJA ORZECZNICZA - SKREŚLANIE AKAPITÓW
     pdf.set_font("Roboto", style="B", size=9)
     pdf.cell(0, 5, "Wydano orzeczenie o:", ln=1)
     
@@ -374,18 +394,18 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     # Decyzja Zdolny
     y_start = pdf.get_y()
     pdf.multi_cell(0, 4, "- brak przeciwwskazań zdrowotnych do pracy na stanowisku")
-    if not jest_zdolny: pdf.strike_multicell(10, y_start, 0, pdf.get_y() - y_start, "- brak przeciwwskazań zdrowotnych do pracy na stanowisku")
+    if not jest_zdolny: pdf.strike_block(y_start, pdf.get_y(), 4)
     
     y_start = pdf.get_y()
     pdf.multi_cell(0, 4, "- braku przeciwwskazań zdrowotnych do podjęcia lub kontynuowania nauki, studiów lub studiów doktoranckich")
-    if not jest_zdolny: pdf.strike_multicell(10, y_start, 0, pdf.get_y() - y_start, "- braku przeciwwskazań zdrowotnych do podjęcia lub kontynuowania nauki, studiów lub studiów doktoranckich")
+    if not jest_zdolny: pdf.strike_block(y_start, pdf.get_y(), 4)
     
     # Decyzja Niezdolny
     y_start = pdf.get_y()
     pdf.multi_cell(0, 4, "- przeciwwskazaniach zdrowotnych do pracy na stanowisku")
-    if jest_zdolny: pdf.strike_multicell(10, y_start, 0, pdf.get_y() - y_start, "- przeciwwskazaniach zdrowotnych do pracy na stanowisku")
+    if jest_zdolny: pdf.strike_block(y_start, pdf.get_y(), 4)
     
-    # Inne domyślnie skreślone
+    # Skreślenie całej reszty długiego bloku
     y_start = pdf.get_y()
     txt_rest = (
         "- przeciwwskazaniach zdrowotnych do podjęcia lub kontynuowania nauki, studiów lub studiów doktoranckich\n"
@@ -400,7 +420,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
         "- inne"
     )
     pdf.multi_cell(0, 4, txt_rest)
-    pdf.strike_multicell(10, y_start, 0, pdf.get_y() - y_start, txt_rest)
+    pdf.strike_block(y_start, pdf.get_y(), 4)
     
     pdf.ln(3)
     uwagi = str(orz_data.get('UwagiLekarza', ''))
