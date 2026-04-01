@@ -48,8 +48,12 @@ if tryb_nowy_pacjent:
             value=datetime.date(1990, 1, 1)
         )
     
-    # NOWOŚĆ: Pole na adres zamieszkania
-    n_adres = st.text_input("Adres zamieszkania", placeholder="np. ul. Medyczna 1, 00-000 Miasto")
+    # Dodatkowe pola: adres i e-mail
+    c4, c5 = st.columns(2)
+    with c4:
+        n_adres = st.text_input("Adres zamieszkania", placeholder="np. ul. Medyczna 1, 00-000 Miasto")
+    with c5:
+        n_email = st.text_input("Adres E-mail", placeholder="np. jan@kowalski.pl")
     
     pesel_final = n_pesel
 else:
@@ -119,19 +123,18 @@ if st.button("🚀 ZAREJESTRUJ WIZYTĘ", type="primary", use_container_width=Tru
         st.error("Proszę podać nazwę stanowiska pracy!")
     else:
         with st.spinner("Zapisywanie w bazie danych..."):
-            # KROK 1: Jeśli pacjent jest nowy, stwórz mu kartę z pełnymi danymi (w tym Adres)
+            # KROK 1: Zapis pacjenta (7 parametrów: z E-mailem na końcu)
             if tryb_nowy_pacjent:
-                # Wysłanie 6 parametrów do funkcji db_service, zgodnie z nową wersją (Adres na końcu)
-                sukces_p, msg_p = add_patient_to_db(n_pesel, n_imie, n_nazwisko, str(n_data_ur), n_tel, n_adres)
+                sukces_p, msg_p = add_patient_to_db(n_pesel, n_imie, n_nazwisko, str(n_data_ur), n_tel, n_adres, n_email)
                 if not sukces_p:
                     st.error(f"Błąd rejestracji pacjenta: {msg_p}")
                     st.stop()
 
-            # KROK 2: Jeśli wybrano firmę i nowe stanowisko, zapisz je w jej katalogu
+            # KROK 2: Jeśli wybrano firmę i nowe stanowisko
             if nip_final != "0" and wybrane_st == "➕ NOWE STANOWISKO":
                 add_stanowisko_to_db(nip_final, final_st_nazwa, final_czynniki)
 
-            # KROK 3: Zapisz wizytę w kalendarzu
+            # KROK 3: Zapisz wizytę
             notatki_wizyty = f"Stanowisko: {final_st_nazwa}\\nZagrożenia: {final_czynniki}"
             sukces_w, msg_w = add_appointment_to_db(
                 pesel=pesel_final,
