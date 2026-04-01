@@ -25,12 +25,18 @@ with st.form("patient_form", clear_on_submit=False):
     st.divider()
     st.subheader("Dane szczegółowe i kontaktowe")
     
-    data_urodzenia = st.date_input(
-        "Data urodzenia", 
-        min_value=datetime.date(1940, 1, 1),
-        max_value=datetime.date.today(),
-        value=datetime.date(1990, 1, 1)
-    )
+    # Podział na dwie kolumny dla daty i płci
+    col_date, col_plec = st.columns(2)
+    with col_date:
+        data_urodzenia = st.date_input(
+            "Data urodzenia", 
+            min_value=datetime.date(1940, 1, 1),
+            max_value=datetime.date.today(),
+            value=datetime.date(1990, 1, 1)
+        )
+    with col_plec:
+        # Wybór płci
+        plec = st.radio("Płeć pacjenta:", options=["Mężczyzna", "Kobieta"], horizontal=True)
     
     # Podział na dwie kolumny dla adresu i e-maila
     col_adres, col_email = st.columns(2)
@@ -52,8 +58,8 @@ with st.form("patient_form", clear_on_submit=False):
         elif not adres:
             st.error("Błąd: Adres zamieszkania jest wymagany do dokumentacji.")
         else:
-            # Zapis do bazy danych (7 argumentów: dodany adres i email na końcu)
-            sukces, msg = add_patient_to_db(pesel, imie, nazwisko, str(data_urodzenia), telefon, adres, email)
+            # Zapis do bazy danych (8 argumentów, na końcu Płeć)
+            sukces, msg = add_patient_to_db(pesel, imie, nazwisko, str(data_urodzenia), telefon, adres, email, plec)
             if sukces:
                 st.success(f"✅ {msg}")
                 st.balloons()
