@@ -36,6 +36,9 @@ class UczenPDF(FPDF):
             
     def write_text(self, w, h, text, align="L"):
         """Nasz własny, bezpieczny silnik łamiący tekst"""
+        # ZABEZPIECZENIE: cell() w FPDF2 nie obsługuje "J" (Justify). Wymuszamy "L" (Left).
+        safe_align = "L" if align == "J" else align
+        
         x = self.get_x()
         lines = str(text).split("\n")
         for text_line in lines:
@@ -50,11 +53,11 @@ class UczenPDF(FPDF):
                     line += word + " "
                 else:
                     self.set_x(x)
-                    self.cell(w, h, line.strip(), align=align, ln=1)
+                    self.cell(w, h, line.strip(), align=safe_align, ln=1)
                     line = word + " "
             if line:
                 self.set_x(x)
-                self.cell(w, h, line.strip(), align=align, ln=1)
+                self.cell(w, h, line.strip(), align=safe_align, ln=1)
 
 def init_pdf(font_reg, font_bold, font_italic):
     pdf = UczenPDF()
@@ -87,7 +90,7 @@ def create_uczen_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.set_font("Roboto", size=9)
     preambula = "W wyniku badania lekarskiego mającego na celu ocenę możliwości pobierania nauki, uwzględniającą stan zdrowia osób badanych i zagrożenia występujące na miejscu wykonywania i odbywania nauki zawodu lub stażu uczniowskiego, studiów, kwalifikacyjnych kursów zawodowych albo kształcenia w szkole doktorskiej, stosownie do przepisu art. 5 ust. 1 pkt 4 i 5 ustawy z dnia 27 czerwca 1997 r. o służbie medycyny pracy (Dz.U. 2022 r. poz. 437)"
     pdf.set_x(10)
-    pdf.write_text(190, 5, preambula, align="J")
+    pdf.write_text(190, 5, preambula, align="L") # Zmienione bezpiecznie na "L"
     
     pdf.ln(3)
     pdf.set_font("Roboto", style="B", size=11)
