@@ -211,7 +211,7 @@ def apply_pro_style():
             encoded_string = base64.b64encode(image_file.read()).decode()
         st.markdown(f"""<style>[data-testid="stSidebarNav"] {{ background-image: url(data:image/png;base64,{encoded_string}); background-repeat: no-repeat; background-position: center 20px; background-size: 80%; padding-top: 150px !important; }}</style>""", unsafe_allow_html=True)
     
-    # 2. Ostateczna poprawka tła (Wymuszenie wyświetlania, omija błędy na telefonach)
+    # 2. Ostateczna poprawka tła (Wymuszenie wyświetlania, omija błędy na telefonach) + PRZYCIEMNIENIE TŁA (opacity)
     bg_file = "1775064952136.jpg"  
     if os.path.exists(bg_file):
         with open(bg_file, "rb") as bg_image:
@@ -231,6 +231,7 @@ def apply_pro_style():
                 background-position: center center;
                 background-repeat: no-repeat;
                 z-index: -1;
+                opacity: 0.15; /* <-- ZMNIEJSZONA INTENSYWNOŚĆ TŁA */
             }}
             /* Wymuszamy przezroczystość wszystkich kontenerów nad tłem */
             .stApp, 
