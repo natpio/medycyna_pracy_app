@@ -7,7 +7,8 @@ from db_service import (
     add_appointment_to_db, 
     add_patient_to_db, 
     add_stanowisko_to_db, 
-    apply_pro_style
+    apply_pro_style,
+    dekoduj_pesel
 )
 
 # --- 1. KONFIGURACJA STRONY ---
@@ -34,28 +35,40 @@ tryb_nowy_pacjent = st.toggle("✨ **NOWY PACJENT** (brak w systemie)", value=Fa
 if tryb_nowy_pacjent:
     st.subheader("🆕 Dane podstawowe nowego pacjenta")
     c1, c2, c3 = st.columns(3)
+    
     with c1:
         n_imie = st.text_input("Imię")
         n_pesel = st.text_input("PESEL", max_chars=11)
     with c2:
         n_nazwisko = st.text_input("Nazwisko")
         n_tel = st.text_input("Telefon")
-    with c3:
-        n_data_ur = st.date_input(
-            "Data urodzenia", 
-            min_value=datetime.date(1940, 1, 1),
-            max_value=datetime.date.today(),
-            value=datetime.date(1990, 1, 1)
-        )
+        
+    # --- LOGIKA AUTOUZUPEŁNIANIA Z PESEL ---
+    calc_date = datetime.date(1990, 1, 1)
+    calc_plec = "Mężczyzna"
     
-    # Dodatkowe pola: płeć, adres i e-mail
-    c4, c5, c6 = st.columns([1, 1, 1])
+    with c3:
+        st.write("Automatyzacja")
+        if st.button("🪄 Uzupełnij z PESEL", use_container_width=True):
+            d, p = dekoduj_pesel(n_pesel)
+            if d: 
+                calc_date, calc_plec = d, p
+                st.toast(f"Pobrano dane: {p}, ur. {d}")
+            else: 
+                st.error("Błędny lub niepełny numer PESEL.")
+                
+    st.divider()
+    st.subheader("Dane szczegółowe i kontaktowe")
+    
+    # Dodatkowe pola, w tym Płeć i Data Urodzenia z wartościami domyślnymi (lub wyliczonymi)
+    c4, c5 = st.columns(2)
     with c4:
-        n_plec = st.radio("Płeć pacjenta:", options=["Mężczyzna", "Kobieta"], horizontal=True)
+        n_data_ur = st.date_input("Data urodzenia", value=calc_date)
+        n_plec = st.radio("Płeć pacjenta:", options=["Mężczyzna", "Kobieta"], 
+                          index=0 if calc_plec == "Mężczyzna" else 1, horizontal=True)
     with c5:
-        n_adres = st.text_input("Adres zamieszkania", placeholder="np. ul. Medyczna 1, 00-000 Miasto")
-    with c6:
-        n_email = st.text_input("Adres E-mail", placeholder="np. jan@kowalski.pl")
+        n_adres = st.text_input("Adres zamieszkania", placeholder="ul. Medyczna 1, Miasto")
+        n_email = st.text_input("Adres E-mail", placeholder="jan@kowalski.pl")
     
     pesel_final = n_pesel
 else:
