@@ -5,13 +5,28 @@ import datetime
 from fpdf import FPDF
 
 class OrzeczeniePDF(FPDF):
-    def draw_form_box(self, x, y, w, h, label, value, is_bold=False):
+    def strike_text(self, text, h=4):
+        x, y = self.get_x(), self.get_y()
+        w = self.get_string_width(text)
+        self.cell(w, h, text)
+        self.line(x, y + h/2.2, x + w, y + h/2.2)
+
+    def print_options(self, options, selected_idx, h=4, spacer="; "):
+        for i, opt in enumerate(options):
+            if i == selected_idx:
+                self.set_font("Roboto", style="B")
+                self.cell(self.get_string_width(opt), h, opt)
+                self.set_font("Roboto", style="")
+            else:
+                self.strike_text(opt, h)
+            if i < len(options) - 1:
+                self.cell(self.get_string_width(spacer), h, spacer)
+
+    def strike_multicell(self, x, y, w, h, text):
         self.set_xy(x, y)
-        self.set_font("Roboto", size=6)
-        self.cell(w, 3, label, ln=1)
-        self.set_xy(x, y + 3)
-        self.set_font("Roboto", style="B" if is_bold else "", size=9)
-        self.multi_cell(w, h - 3, str(value), border=1, align='L')
+        self.multi_cell(w, h, text)
+        y_end = self.get_y()
+        self.line(x, y + (y_end - y)/2, x + w if w > 0 else 190, y + (y_end - y)/2)
 
 def init_pdf(font_reg, font_bold, font_italic):
     pdf = OrzeczeniePDF()
@@ -39,7 +54,12 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path, font
     pdf.set_xy(130, 10)
     pdf.set_font("Roboto", size=10)
     typ_bad = str(wizyta.get('TypBadania', 'okresowe')).lower()
-    pdf.multi_cell(70, 5, f"Rodzaj badania lekarskiego: {typ_bad}\n(wstępne, okresowe, kontrolne)")
+    
+    pdf.cell(70, 5, f"Rodzaj badania lekarskiego:", ln=1)
+    pdf.set_x(130)
+    pdf.set_font("Roboto", size=10)
+    idx_bad = 0 if "wstępne" in typ_bad else (1 if "okresowe" in typ_bad else 2)
+    pdf.print_options(["wstępne", "okresowe", "kontrolne"], idx_bad, 5, ", ")
     
     pdf.ln(10)
     pdf.set_y(35)
@@ -81,13 +101,18 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path, font
     
     pdf.ln(4)
     pdf.set_font("Roboto", size=10)
-    pdf.cell(85, 6, "zatrudniony(-na) / przyjmowany(-na)*) do pracy w: ")
+    
+    # Skreślenie statusu zatrudnienia
+    idx_zatr = 1 if "wstępne" in typ_bad else 0
+    pdf.print_options(["zatrudniony(-na)", "przyjmowany(-na)"], idx_zatr, 6, " / ")
+    pdf.cell(pdf.get_string_width(" do pracy w: "), 6, " do pracy w: ")
+    
     pdf.set_font("Roboto", style="B", size=11)
     pdf.multi_cell(0, 6, f"{firma.get('NazwaFirmy', '')}, {firma.get('Adres', '')}")
     
     pdf.ln(2)
     pdf.set_font("Roboto", size=10)
-    pdf.cell(0, 6, "na stanowisku / stanowiskach/ stanowisko / stanowiska*): ", ln=1)
+    pdf.cell(0, 6, "na stanowisku / stanowiskach / stanowisko / stanowiska*): ", ln=1)
     
     pdf.set_font("Roboto", style="B", size=11)
     notatki = str(wizyta.get('Notatki', '')).replace('Stanowisko: ', '').split('\n')[0]
@@ -100,27 +125,20 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path, font
     
     pdf.set_font("Roboto", size=10)
     
-    pdf.rect(10, pdf.get_y() + 1, 4, 4)
-    if jest_zdolny:
-        pdf.set_font("Roboto", style="B", size=10)
-        pdf.text(10.5, pdf.get_y() + 4.5, "X")
-    pdf.set_font("Roboto", size=10)
-    pdf.set_xy(16, pdf.get_y())
-    pdf.multi_cell(0, 5, "wobec braku przeciwwskazań zdrowotnych jest zdolny(-na) do wykonywania/podjęcia*) pracy na określonym stanowisku (symbol 21)*)")
-    
+    # DECYZJE - Przekreślane całe linie!
+    y_start = pdf.get_y()
+    pdf.multi_cell(0, 5, "wobec braku przeciwwskazań zdrowotnych jest zdolny(-na) do wykonywania pracy na określonym stanowisku (symbol 21)*)")
+    if not jest_zdolny: pdf.strike_multicell(10, y_start, 0, pdf.get_y() - y_start, "wobec braku przeciwwskazań zdrowotnych jest zdolny(-na) do wykonywania pracy na określonym stanowisku (symbol 21)*)")
     pdf.ln(3)
-    pdf.rect(10, pdf.get_y() + 1, 4, 4)
-    if not jest_zdolny:
-        pdf.set_font("Roboto", style="B", size=10)
-        pdf.text(10.5, pdf.get_y() + 4.5, "X")
-    pdf.set_font("Roboto", size=10)
-    pdf.set_xy(16, pdf.get_y())
-    pdf.multi_cell(0, 5, "wobec istnienia przeciwwskazań zdrowotnych jest niezdolny(-na) do wykonywania/podjęcia*) pracy na określonym stanowisku (symbol 22)*)")
     
+    y_start = pdf.get_y()
+    pdf.multi_cell(0, 5, "wobec istnienia przeciwwskazań zdrowotnych jest niezdolny(-na) do wykonywania pracy na określonym stanowisku (symbol 22)*)")
+    if jest_zdolny: pdf.strike_multicell(10, y_start, 0, pdf.get_y() - y_start, "wobec istnienia przeciwwskazań zdrowotnych jest niezdolny(-na) do wykonywania pracy na określonym stanowisku (symbol 22)*)")
     pdf.ln(3)
-    pdf.rect(10, pdf.get_y() + 1, 4, 4)
-    pdf.set_xy(16, pdf.get_y())
+    
+    y_start = pdf.get_y()
     pdf.multi_cell(0, 5, "wobec istnienia przeciwwskazań zdrowotnych utracił(a) zdolność do wykonywania dotychczasowej pracy z dniem .................................. (symbol 23)*).")
+    pdf.strike_multicell(10, y_start, 0, pdf.get_y() - y_start, "wobec istnienia przeciwwskazań zdrowotnych utracił(a) zdolność do wykonywania dotychczasowej pracy z dniem .................................. (symbol 23)*).")
     
     pdf.ln(8)
     pdf.set_font("Roboto", size=10)
@@ -172,7 +190,7 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path, font
     pdf.set_font("Roboto", size=6)
     pouczenie_text = (
         "POUCZENIE:\n"
-        "1.***) Osoba badana lub pracodawca może w terminie 7 dni od dnia otrzymania orzeczenia lekarskiego wnieść odwołanie wraz z jego uzasadnieniem za pośrednictwem lekarza, który je wydał, do jednego z podmiotów odwoławczych, którymi są:\n"
+        "1. Osoba badana lub pracodawca może w terminie 7 dni od dnia otrzymania orzeczenia lekarskiego wnieść odwołanie wraz z jego uzasadnieniem za pośrednictwem lekarza, który je wydał, do jednego z podmiotów odwoławczych, którymi są:\n"
         "1) wojewódzkie ośrodki medycyny pracy właściwe ze względu na miejsce świadczenia pracy lub siedzibę jednostki organizacyjnej, w której jest zatrudniony pracownik;\n"
         "2) instytuty badawcze w dziedzinie medycyny pracy lub Uniwersyteckie Centrum Medycyny Morskiej i Tropikalnej w Gdyni, w przypadku orzeczenia lekarskiego wydanego przez lekarza zatrudnionego w wojewódzkim ośrodku medycyny pracy;\n"
         "3) Centrum Naukowe Medycyny Kolejowej, w przypadku orzeczenia lekarskiego wydanego przez Kolejowy Zakład Medycyny Pracy;\n"
@@ -183,7 +201,7 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path, font
         "21 - wobec braku przeciwwskazań zdrowotnych zdolny do wykonywania pracy na wskazanym (dotychczasowym) stanowisku pracy\n"
         "22 - wobec przeciwwskazań zdrowotnych niezdolny do wykonywania pracy na wskazanym (dotychczasowym) stanowisku pracy\n"
         "23 - wobec przeciwwskazań zdrowotnych utracił zdolność do wykonywania dotychczasowej pracy\n\n"
-        "OBJAŚNIENIA: *) Niepotrzebne skreślić. **) W przypadku osoby nieposiadającej numeru PESEL - seria, numer i nazwa dokumentu potwierdzającego tożsamość. ***) Skreślić w przypadku orzeczenia lekarskiego wydanego w trybie odwoławczym."
+        "OBJAŚNIENIA: *) Niewłaściwe skreślić. **) W przypadku osoby nieposiadającej numeru PESEL - seria, numer i nazwa dokumentu potwierdzającego tożsamość."
     )
     pdf.multi_cell(0, 3, pouczenie_text)
     
