@@ -203,7 +203,7 @@ def apply_pro_style():
     
     render_live_badge()
 
-    # 4. Stopka
+    # 4. Stopka z logo firmy
     creator_logo = "logo_firma.png" if os.path.exists("logo_firma.png") else ("logo_firma.jpg" if os.path.exists("logo_firma.jpg") else None)
     if creator_logo:
         mime = "image/png" if creator_logo.endswith(".png") else "image/jpeg"
