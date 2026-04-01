@@ -3,16 +3,17 @@ from db_service import add_patient_to_db, apply_pro_style
 import datetime
 
 # --- KONFIGURACJA STRONY ---
-st.set_page_config(page_title="Rejestracja Pacjenta", page_icon="👤")
+st.set_page_config(page_title="Rejestracja Pacjenta", page_icon="👤", layout="centered")
 
 # --- URUCHOMIENIE STYLU PRO ---
 apply_pro_style()
 
 st.markdown("# 👤 Nowa Karta Pacjenta")
-st.write("Wprowadź dane pacjenta, który zgłasza się do gabinetu po raz pierwszy.")
+st.write("Wprowadź pełne dane pacjenta, który zgłasza się do gabinetu po raz pierwszy.")
 
 # Używamy st.form, aby zgrupować pola i wysłać je jednym przyciskiem
 with st.form("patient_form", clear_on_submit=False):
+    st.subheader("Dane podstawowe")
     col1, col2 = st.columns(2)
     with col1:
         imie = st.text_input("Imię", placeholder="np. Jan")
@@ -21,9 +22,24 @@ with st.form("patient_form", clear_on_submit=False):
         nazwisko = st.text_input("Nazwisko", placeholder="np. Kowalski")
         telefon = st.text_input("Numer telefonu", placeholder="np. 500 123 456")
     
-    data_urodzenia = st.date_input("Data urodzenia", min_value=datetime.date(1940, 1, 1))
+    st.divider()
+    st.subheader("Dane szczegółowe")
+    
+    # Podział na dwie kolumny dla daty i adresu
+    col_date, col_adres = st.columns(2)
+    with col_date:
+        data_urodzenia = st.date_input(
+            "Data urodzenia", 
+            min_value=datetime.date(1940, 1, 1),
+            max_value=datetime.date.today(),
+            value=datetime.date(1990, 1, 1)
+        )
+    with col_adres:
+        adres = st.text_input("Adres zamieszkania", placeholder="ul. Medyczna 1/2, 00-000 Miasto")
 
-    submitted = st.form_submit_button("Zapisz Pacjenta w Bazie", type="primary")
+    # Przycisk wysyłający formularz
+    st.markdown("<br>", unsafe_allow_html=True)
+    submitted = st.form_submit_button("💾 Zapisz Pacjenta w Bazie", type="primary", use_container_width=True)
 
     if submitted:
         # Prosta walidacja po stronie frontendu
@@ -31,12 +47,13 @@ with st.form("patient_form", clear_on_submit=False):
             st.error("Błąd: Podaj poprawny, 11-cyfrowy numer PESEL.")
         elif not imie or not nazwisko:
             st.error("Błąd: Imię i nazwisko są wymagane.")
+        elif not adres:
+            st.error("Błąd: Adres zamieszkania jest wymagany do dokumentacji.")
         else:
-            # Wywołanie funkcji z backendu
-            with st.spinner("Zapisywanie w Google Sheets..."):
-                success, message = add_patient_to_db(pesel, imie, nazwisko, data_urodzenia, telefon)
-            
-            if success:
-                st.success(message)
+            # Zapis do bazy danych (6 argumentów: dodany adres na końcu)
+            sukces, msg = add_patient_to_db(pesel, imie, nazwisko, str(data_urodzenia), telefon, adres)
+            if sukces:
+                st.success(f"✅ {msg}")
+                st.balloons()
             else:
-                st.error(message)
+                st.error(f"❌ {msg}")
