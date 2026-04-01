@@ -12,8 +12,51 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Wstrzyknięcie stylów CSS oraz automatyczne ładowanie Logo i Stopki VORTEZA
 apply_pro_style()
+
+# --- FUNKCJE POMOCNICZE DLA KALENDARZA ---
+
+def czy_to_swieto(d):
+    """Sprawdza, czy dana data jest dniem ustawowo wolnym w Polsce (rok 2026)."""
+    rok = d.year
+    # Święta stałe
+    stale = [
+        (1, 1),   # Nowy Rok
+        (1, 6),   # Trzech Króli
+        (5, 1),   # Święto Pracy
+        (5, 3),   # Święto Konstytucji
+        (8, 15),  # Wniebowzięcie NMP
+        (11, 1),  # Wszystkich Świętych
+        (11, 11), # Święto Niepodległości
+        (12, 25), # Boże Narodzenie
+        (12, 26)  # Boże Narodzenie (II dzień)
+    ]
+    if (d.month, d.day) in stale:
+        return True
+    
+    # Obliczanie Wielkanocy (Algorytm Meeusa/Jonesa/Butchera)
+    a = rok % 19
+    b = rok // 100
+    c = rok % 100
+    d_q = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d_q - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    miesiac_w = (h + l - 7 * m + 114) // 31
+    dzien_w = ((h + l - 7 * m + 114) % 31) + 1
+    
+    wielkanoc = date(rok, miesiac_w, dzien_w)
+    poniedzialek_wielkanocny = wielkanoc + timedelta(days=1)
+    boze_cialo = wielkanoc + timedelta(days=60)
+    
+    if d in [wielkanoc, poniedzialek_wielkanocny, boze_cialo]:
+        return True
+    return False
 
 # --- 2. KOMPONENTY PREMIUM UI ---
 
@@ -37,31 +80,27 @@ def render_premium_card(title, value, icon, badge_text, badge_color, badge_bg):
     st.markdown(card_html, unsafe_allow_html=True)
 
 def render_calendar_grid(df_wizyty):
-    """Generuje wizualną siatkę kalendarza z obłożeniem - Naprawiona wersja bez błędów div."""
+    """Generuje wizualną siatkę kalendarza z wyróżnieniem weekendów i świąt."""
     dzis = date.today()
     rok, miesiac = dzis.year, dzis.month
     
-    # Nazwa miesiąca po polsku
     miesiace_pl = {1: "Styczeń", 2: "Luty", 3: "Marzec", 4: "Kwiecień", 5: "Maj", 6: "Czerwiec", 
                    7: "Lipiec", 8: "Sierpień", 9: "Wrzesień", 10: "Październik", 11: "Listopad", 12: "Grudzień"}
     
     st.markdown(f"#### 🗓️ Radar Obłożenia: {miesiace_pl[miesiac]} {rok}")
     
-    # Przygotowanie danych (zliczanie wizyt na dzień)
     if not df_wizyty.empty:
-        # Upewniamy się, że operujemy na datach, nie na stringach
         df_wizyty['temp_date'] = pd.to_datetime(df_wizyty['DataWizyty'], errors='coerce').dt.date
         counts = df_wizyty['temp_date'].value_counts().to_dict()
     else:
         counts = {}
 
-    # Nagłówki dni tygodnia
     days_header = ["Pn", "Wt", "Śr", "Czw", "Pt", "Sob", "Nd"]
     cols_header = st.columns(7)
     for i, day in enumerate(days_header):
-        cols_header[i].markdown(f"<div style='text-align: center; color: #64748b; font-weight: 700; font-size: 0.75rem; margin-bottom: 5px;'>{day}</div>", unsafe_allow_html=True)
+        color = "#ef4444" if i >= 5 else "#64748b" # Czerwony dla nagłówka weekendu
+        cols_header[i].markdown(f"<div style='text-align: center; color: {color}; font-weight: 700; font-size: 0.75rem; margin-bottom: 5px;'>{day}</div>", unsafe_allow_html=True)
 
-    # Logika kalendarza
     cal = calendar.Calendar(firstweekday=0)
     month_days = cal.monthdayscalendar(rok, miesiac)
 
@@ -73,22 +112,35 @@ def render_calendar_grid(df_wizyty):
             else:
                 curr_date = date(rok, miesiac, day)
                 wizyty_count = counts.get(curr_date, 0)
-                
-                # Stylizacja komórki
+                is_weekend = (curr_date.weekday() >= 5)
+                is_holiday = czy_to_swieto(curr_date)
                 is_today = (curr_date == dzis)
-                bg_color = "#1e3a8a" if is_today else ("#eff6ff" if wizyty_count > 0 else "#ffffff")
-                text_color = "#ffffff" if is_today else ("#1e40af" if wizyty_count > 0 else "#64748b")
-                border = "2px solid #3b82f6" if is_today else "1px solid #e2e8f0"
-                shadow = "0 4px 6px rgba(30, 58, 138, 0.2)" if is_today else "0 2px 4px rgba(0,0,0,0.02)"
                 
-                # Budowanie HTML w jednej linii, aby uniknąć błędów renderowania Streamlit
-                icon_html = f"👤 {wizyty_count}" if wizyty_count > 0 else "&nbsp;"
+                # LOGIKA KOLORÓW
+                if is_today:
+                    bg_color, text_color, border = "#1e3a8a", "#ffffff", "2px solid #3b82f6"
+                elif is_holiday:
+                    bg_color, text_color, border = "#fee2e2", "#b91c1c", "1px solid #fca5a5"
+                elif is_weekend:
+                    bg_color, text_color, border = "#f1f5f9", "#475569", "1px solid #e2e8f0"
+                elif wizyty_count > 0:
+                    bg_color, text_color, border = "#eff6ff", "#1e40af", "1px solid #bfdbfe"
+                else:
+                    bg_color, text_color, border = "#ffffff", "#64748b", "1px solid #e2e8f0"
+                
+                # Treść komórki
+                if is_holiday:
+                    sub_text = "ZAMKNIĘTE"
+                elif wizyty_count > 0:
+                    sub_text = f"👤 {wizyty_count}"
+                else:
+                    sub_text = "&nbsp;"
                 
                 cell_html = (
                     f"<div style='background:{bg_color}; color:{text_color}; border:{border}; "
-                    f"border-radius:12px; padding:8px; height:65px; text-align:center; box-shadow:{shadow};'>"
+                    f"border-radius:12px; padding:8px; height:65px; text-align:center; transition: 0.3s;'>"
                     f"<div style='font-size:0.75rem; font-weight:800;'>{day}</div>"
-                    f"<div style='font-size:0.85rem; font-weight:700; margin-top:4px;'>{icon_html}</div>"
+                    f"<div style='font-size:0.6rem; font-weight:700; margin-top:4px;'>{sub_text}</div>"
                     f"</div>"
                 )
                 week_cols[i].markdown(cell_html, unsafe_allow_html=True)
@@ -178,12 +230,8 @@ st.markdown("<br>", unsafe_allow_html=True)
 col_main, col_side = st.columns([2.2, 1])
 
 with col_main:
-    # Radar Obłożenia
     render_calendar_grid(df_wizyty)
-    
     st.markdown("<br>", unsafe_allow_html=True)
-    
-    # Tabela aktywności
     st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Najbliższe wizyty</h4>", unsafe_allow_html=True)
     if not df_do_tabeli.empty:
         render_activity_table(df_do_tabeli)
