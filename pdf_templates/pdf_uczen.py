@@ -36,7 +36,6 @@ class UczenPDF(FPDF):
             
     def write_text(self, w, h, text, align="L"):
         """Nasz własny, bezpieczny silnik łamiący tekst"""
-        # ZABEZPIECZENIE: cell() w FPDF2 nie obsługuje "J" (Justify). Wymuszamy "L" (Left).
         safe_align = "L" if align == "J" else align
         
         x = self.get_x()
@@ -90,7 +89,7 @@ def create_uczen_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.set_font("Roboto", size=9)
     preambula = "W wyniku badania lekarskiego mającego na celu ocenę możliwości pobierania nauki, uwzględniającą stan zdrowia osób badanych i zagrożenia występujące na miejscu wykonywania i odbywania nauki zawodu lub stażu uczniowskiego, studiów, kwalifikacyjnych kursów zawodowych albo kształcenia w szkole doktorskiej, stosownie do przepisu art. 5 ust. 1 pkt 4 i 5 ustawy z dnia 27 czerwca 1997 r. o służbie medycyny pracy (Dz.U. 2022 r. poz. 437)"
     pdf.set_x(10)
-    pdf.write_text(190, 5, preambula, align="L") # Zmienione bezpiecznie na "L"
+    pdf.write_text(190, 5, preambula, align="L")
     
     pdf.ln(3)
     pdf.set_font("Roboto", style="B", size=11)
@@ -126,12 +125,13 @@ def create_uczen_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.set_x(10)
     pdf.write_text(190, 5, "podejmującego/kontynuującego kształcenie:")
     
-    # Skreślenia typu edukacji
+    # --- POPRAWKA: Prawidłowy znak odstępu i mocne zejście kursora w dół ---
     pdf.set_font("Roboto", size=10)
     pdf.set_x(15)
-    pdf.print_options(["praktyczna nauka zawodu / szkoła / studia", "kwalifikacyjny kurs zawodowy", "szkoła doktorska"], 0, 5, spacer="\n")
+    pdf.print_options(["praktyczna nauka zawodu / szkoła / studia", "kwalifikacyjny kurs zawodowy", "szkoła doktorska"], 0, 5, spacer=" / ")
     
-    pdf.ln(2)
+    pdf.ln(8) # Twardy enter w dół, żeby firma nie nachodziła na wyliczankę
+    
     pdf.set_font("Roboto", size=10)
     pdf.set_x(10)
     pdf.cell(10, 6, "w")
