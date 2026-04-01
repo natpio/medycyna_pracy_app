@@ -1,5 +1,6 @@
 import os
 import io
+import qrcode
 import datetime
 from fpdf import FPDF
 
@@ -129,13 +130,12 @@ def create_skierowanie_wcmp_pdf(orz_data, wizyta, pacjent, firma, signature_path
     
     notatki = str(wizyta.get('Notatki', '')).lower()
     
-    # Skreślanie poszczególnych narażeń (na podstawie notatek z bazy)
+    # Skreślanie poszczególnych narażeń
     idx_wys = 0 if "wysokoś" in notatki else -1
     idx_kier = 1 if "kierowc" in notatki else -1
     idx_woz = 2 if "wózk" in notatki else -1
     idx_komp = 3 if "komputer" in notatki or "ekran" in notatki else -1
     
-    # Renderujemy opcje, jeśli nie ma ich w notatkach - system je przekreśli
     x_opt = pdf.get_x()
     if idx_wys == -1: pdf.strike_text("praca na wysokości", 5) 
     else: pdf.cell(pdf.get_string_width("praca na wysokości"), 5, "praca na wysokości")
@@ -159,27 +159,21 @@ def create_skierowanie_wcmp_pdf(orz_data, wizyta, pacjent, firma, signature_path
     pdf.ln(3)
     y_tbl = pdf.get_y()
     
-    # Kolumny: LP(10), Gabinet(40), Piętro(15), Pokój(20), Podpis(105)
     cols = [10, 20, 60, 75, 95, 200]
-    
-    # Definicja wierszy (wysokości)
     row_heights = [6, 22, 6, 10, 10, 6, 6, 10, 10, 6, 6, 12]
     
-    # Rysowanie siatki tabeli
     curr_y = y_tbl
     for h in row_heights:
         pdf.line(cols[0], curr_y, cols[-1], curr_y)
         curr_y += h
-    pdf.line(cols[0], curr_y, cols[-1], curr_y) # Dolna linia
+    pdf.line(cols[0], curr_y, cols[-1], curr_y) 
     
-    # Pionowe linie
     for col_x in cols:
         pdf.line(col_x, y_tbl, col_x, curr_y)
         
     # --- WYPEŁNIANIE TABELI TEKSTEM ---
     pdf.set_font("Roboto", style="B", size=8)
     
-    # Nagłówek
     r_y = y_tbl
     pdf.set_xy(10, r_y + 1); pdf.cell(10, 4, "LP", align="C")
     pdf.set_xy(20, r_y + 1); pdf.cell(40, 4, "Gabinet / Pracownia", align="C")
@@ -291,7 +285,7 @@ def create_skierowanie_wcmp_pdf(orz_data, wizyta, pacjent, firma, signature_path
     pdf.set_x(10)
     pdf.cell(50, 5, "Wyniki wydać: ")
     
-    # Zaznaczamy/skreślamy wynik wydania w oparciu o to, czy pacjent jest firmowy
+    # Zaznaczamy/skreślamy wynik wydania
     idx_wyniki = 0 # Domyślnie pacjentowi
     pdf.print_options(["pacjentowi", "odbiór w rejestracji", f"wysłać na adres: {firma.get('Adres', '')}"], idx_wyniki, 5, spacer=" / ", max_x=195)
     
@@ -300,10 +294,26 @@ def create_skierowanie_wcmp_pdf(orz_data, wizyta, pacjent, firma, signature_path
     pdf.set_x(10)
     pdf.cell(0, 4, "właściwe zakreślić / * niepotrzebne skreślić", ln=1)
     
-    # Miejsca na pieczątki
-    pdf.ln(10)
+    # --- MIEJSCA NA PIECZĄTKI I QR KOD ---
+    pdf.ln(5)
+    y_signatures = pdf.get_y()
+    
+    # Kod QR (Certyfikat z lewej strony)
+    data_generowania = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    podpis_cyfrowy = str(orz_data.get('Podpis_Cyfrowy', orz_data.get('PodpisCyfrowy', 'Brak autoryzacji')))
+    qr_text = f"SKIEROWANIE WCMP\nNr: {orz_data.get('ID_Orzeczenia', '')}\nWygenerowano: {data_generowania}\nSHA-256: {podpis_cyfrowy}"
+    qr = qrcode.make(qr_text)
+    qr_img_bytes = io.BytesIO()
+    qr.save(qr_img_bytes, format='PNG')
+    
+    pdf.image(qr_img_bytes, x=15, y=y_signatures, w=22)
+    pdf.set_xy(40, y_signatures + 5)
+    pdf.set_font("Roboto", size=6)
+    pdf.multi_cell(60, 3, f"Zatwierdzono Elektronicznie\nlek. Jarosław Tarkowski\nCertyfikat (SHA-256):\n{podpis_cyfrowy}", align="L")
+    
+    # Pieczątka lekarza (prawa strona)
     pdf.set_font("Roboto", size=8)
-    pdf.set_x(130)
+    pdf.set_xy(130, y_signatures)
     pdf.cell(60, 4, "podpis osoby kierującej:", align="C", ln=1)
     
     if signature_path and os.path.exists(signature_path):
