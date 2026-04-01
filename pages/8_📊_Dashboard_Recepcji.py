@@ -86,7 +86,7 @@ def color_status(val):
     color = '#e1f5fe' if val == 'Zaplanowana' else '#c8e6c9'
     return f'background-color: {color}'
 
-st.dataframe(widok_tabeli.style.applymap(color_status, subset=['Status']), use_container_width=True, hide_index=True)
+st.dataframe(widok_tabeli.style.map(color_status, subset=['Status']), use_container_width=True, hide_index=True)
 
 # --- WIDOK 3: FINANSE DNIA ---
 st.divider()
