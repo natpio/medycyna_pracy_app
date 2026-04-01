@@ -3,21 +3,31 @@ import datetime
 from fpdf import FPDF
 
 class KartaBadaniaPDF(FPDF):
+    def safe_multi_cell(self, w, h, text, **kwargs):
+        """Uodpornienie na błędy FPDF2: rozbija ekstremalnie długie słowa bez spacji"""
+        safe_text = str(text) if text else ""
+        words = safe_text.split(" ")
+        safe_words = []
+        for word in words:
+            if len(word) > 25:
+                # Wstawia sztuczną spację co 25 znaków do dziwnych ciągów
+                safe_words.append(" ".join(word[i:i+25] for i in range(0, len(word), 25)))
+            else:
+                safe_words.append(word)
+        self.multi_cell(w, h, " ".join(safe_words), **kwargs)
+
     def strike_text(self, text, h=4):
-        """Rysuje przekreślony pojedynczy tekst"""
         x, y = self.get_x(), self.get_y()
         w = self.get_string_width(text)
         self.cell(w, h, text)
         self.line(x, y + h/2.2, x + w, y + h/2.2)
 
     def print_options(self, options, selected_idx, h=4, spacer="; ", max_x=195):
-        """Formatuje listę opcji ze skreśleniami i bezpiecznym łamaniem linii"""
         start_x = self.get_x()
         for i, opt in enumerate(options):
             opt_w = self.get_string_width(opt)
             spacer_w = self.get_string_width(spacer) if i < len(options)-1 else 0
             
-            # Bezpieczne przejście do nowej linii, jeśli brakuje miejsca
             if self.get_x() + opt_w + spacer_w > max_x:
                 self.ln(h)
                 self.set_x(start_x)
@@ -33,21 +43,18 @@ class KartaBadaniaPDF(FPDF):
                 self.cell(spacer_w, h, spacer)
 
     def strike_block(self, y_start, y_end, line_h=4, x_start=10, x_end=190):
-        """Skreśla całe akapity linia po linii"""
         curr_y = y_start
         while curr_y < y_end - 1:
             self.line(x_start, curr_y + line_h/2.2, x_end, curr_y + line_h/2.2)
             curr_y += line_h
 
     def draw_form_box(self, x, y, w, h, label, value, is_bold=False):
-        """Rysuje ramkę formularza. Puste value nie psuje układu."""
         self.set_xy(x, y)
         self.set_font("Roboto", size=6)
         self.cell(w, 3, label, ln=1)
         self.set_xy(x, y + 3)
         self.set_font("Roboto", style="B" if is_bold else "", size=9)
-        safe_value = str(value) if value else ""
-        self.multi_cell(w, h - 3, safe_value, border=1, align='L')
+        self.safe_multi_cell(w, h - 3, value, border=1, align='L')
 
 def init_pdf(font_reg, font_bold, font_italic):
     pdf = KartaBadaniaPDF()
@@ -70,7 +77,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.set_font("Roboto", size=8)
     pdf.rect(10, 10, 40, 18)
     pdf.set_xy(10, 16)
-    pdf.multi_cell(40, 4, "Pieczęć zakładu\nopieki zdrowotnej", align="C")
+    pdf.safe_multi_cell(40, 4, "Pieczęć zakładu\nopieki zdrowotnej", align="C")
     
     pdf.set_font("Roboto", style="B", size=14)
     pdf.set_xy(60, 12)
@@ -87,7 +94,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     
     pdf.ln(5)
     
-    # Metryczka ze skreśleniami
     pdf.set_font("Roboto", size=7)
     pdf.cell(50, 6, "Rodzaj badania profilaktycznego", border=1)
     x_start, y_start = pdf.get_x(), pdf.get_y()
@@ -114,7 +120,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     
     pdf.ln(5)
     
-    # Zamiast kropek przesyłamy po prostu puste stringi "" - ramki narysują się same!
     y_start = pdf.get_y()
     pdf.draw_form_box(10, y_start, 95, 10, "Nazwisko i imię", f"{pacjent.get('Nazwisko', '')} {pacjent.get('Imie', '')}", is_bold=True)
     pesel_str = str(pacjent.get('PESEL', ''))
@@ -191,7 +196,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
         
     pdf.ln(5)
     
-    # Kropki zastąpione linią ciągłą rysowaną przez `border="B"`
     pdf.set_font("Roboto", style="B", size=8)
     pdf.cell(0, 4, "Czy w przebiegu pracy zawodowej:", ln=1)
     pdf.set_font("Roboto", size=8)
@@ -312,7 +316,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.cell(0, 6, "Badanie przedmiotowe*", ln=1)
     
     pdf.set_font("Roboto", size=8)
-    # Krótkie kropki w tekście są w 100% bezpieczne
     pdf.cell(0, 5, "Wzrost ........ cm    Masa ciała ........ kg    Tętno ...... / min.    RR ...... / ...... mmHg", ln=1)
     pdf.cell(0, 5, "Wzrok: VIS: OP: ............ C.C: ............  OL: ............ C.C: ...........", ln=1)
     pdf.cell(0, 5, "rozpoznawanie barw: .................. zez: TAK / NIE     słuch: szept UP .......... m, UL .......... m", ln=1)
@@ -424,15 +427,15 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     jest_zdolny = "NIEZDOLNY" not in decyzja_z_bazy
     
     y_start = pdf.get_y()
-    pdf.multi_cell(0, 4, "- brak przeciwwskazań zdrowotnych do pracy na stanowisku")
+    pdf.safe_multi_cell(0, 4, "- brak przeciwwskazań zdrowotnych do pracy na stanowisku")
     if not jest_zdolny: pdf.strike_block(y_start, pdf.get_y(), 4)
     
     y_start = pdf.get_y()
-    pdf.multi_cell(0, 4, "- braku przeciwwskazań zdrowotnych do podjęcia lub kontynuowania nauki, studiów lub studiów doktoranckich")
+    pdf.safe_multi_cell(0, 4, "- braku przeciwwskazań zdrowotnych do podjęcia lub kontynuowania nauki, studiów lub studiów doktoranckich")
     if not jest_zdolny: pdf.strike_block(y_start, pdf.get_y(), 4)
     
     y_start = pdf.get_y()
-    pdf.multi_cell(0, 4, "- przeciwwskazaniach zdrowotnych do pracy na stanowisku")
+    pdf.safe_multi_cell(0, 4, "- przeciwwskazaniach zdrowotnych do pracy na stanowisku")
     if jest_zdolny: pdf.strike_block(y_start, pdf.get_y(), 4)
     
     y_start = pdf.get_y()
@@ -448,7 +451,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
         "- potrzebie stosowania okularów korygujących wzrok podczas pracy przy obsłudze monitora ekranowego\n"
         "- inne"
     )
-    pdf.multi_cell(0, 4, txt_rest)
+    pdf.safe_multi_cell(0, 4, txt_rest)
     pdf.strike_block(y_start, pdf.get_y(), 4)
     
     pdf.ln(3)
@@ -457,7 +460,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.cell(15, 5, "UWAGI: ")
     pdf.set_font("Roboto", size=8)
     if uwagi:
-        pdf.multi_cell(0, 5, uwagi)
+        pdf.safe_multi_cell(0, 5, uwagi)
     else:
         pdf.cell(0, 5, "", border="B", ln=1)
     
@@ -483,7 +486,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     else:
         pdf.set_xy(120, y_signatures)
         pdf.set_font("Roboto", style="B", size=8)
-        pdf.multi_cell(70, 4, "Badanie profilaktyczne przeprowadził:\nJarosław Tarkowski\nspecjalista medycyny pracy\n30/1JT/370\n8776405", align="C")
+        pdf.safe_multi_cell(70, 4, "Badanie profilaktyczne przeprowadził:\nJarosław Tarkowski\nspecjalista medycyny pracy\n30/1JT/370\n8776405", align="C")
         pdf.set_font("Roboto", size=6)
         pdf.set_xy(120, pdf.get_y() + 5)
         pdf.cell(70, 4, "Pieczęć i podpis lekarza :", align="C")
