@@ -11,24 +11,27 @@ class SanepidPDF(FPDF):
             self.line(x_start, curr_y + line_h/2.2, x_end, curr_y + line_h/2.2)
             curr_y += line_h
             
-    def safe_text(self, x, y, w, h, text):
-        self.set_xy(x, y)
-        safe_value = str(text).replace("\r", "").replace("\n", " ")
-        words = safe_value.split(" ")
-        line = ""
-        for word in words:
-            while self.get_string_width(word) > w - 2:
-                cut_idx = int(len(word) / 2)
-                words.insert(words.index(word)+1, word[cut_idx:])
-                word = word[:cut_idx] + "-"
-            if self.get_string_width(line + word + " ") < w - 2:
-                line += word + " "
-            else:
-                self.cell(w, h, line, ln=1)
+    def write_text(self, w, h, text, align="L"):
+        """Nasz własny, bezpieczny silnik łamiący tekst. Zawsze wraca do punktu startu (X)"""
+        x = self.get_x()
+        lines = str(text).split("\n")
+        for text_line in lines:
+            words = text_line.replace("\r", "").split(" ")
+            line = ""
+            for word in words:
+                while self.get_string_width(word) > w - 2:
+                    cut_idx = int(len(word) / 2)
+                    words.insert(words.index(word)+1, word[cut_idx:])
+                    word = word[:cut_idx] + "-"
+                if self.get_string_width(line + word + " ") < w - 2:
+                    line += word + " "
+                else:
+                    self.set_x(x)
+                    self.cell(w, h, line.strip(), align=align, ln=1)
+                    line = word + " "
+            if line:
                 self.set_x(x)
-                line = word + " "
-        if line:
-            self.cell(w, h, line, ln=1)
+                self.cell(w, h, line.strip(), align=align, ln=1)
 
 def init_pdf(font_reg, font_bold, font_italic):
     pdf = SanepidPDF()
@@ -51,19 +54,21 @@ def create_sanepid_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.set_font("Roboto", style="B", size=8)
     pdf.set_xy(10, 10)
     naglowek = "INDYWIDUALNA SPECJALISTYCZNA PRAKTYKA LEKARSKA\nMEDYCYNA PRACY lek. med. Jarosław Tarkowski 62-065 Grodzisk Wlkp. Ul. Chopina 18/1\nNIP 788-142-01-53; Regon 631003518; tel. 602 465 777; e-mail med-pracy@outlook.com"
-    pdf.multi_cell(120, 4, naglowek, align="L")
+    pdf.write_text(120, 4, naglowek)
     
     pdf.set_y(30)
     pdf.set_font("Roboto", style="B", size=14)
-    pdf.cell(0, 8, "Orzeczenie lekarskie", align="C", ln=1)
+    pdf.set_x(10)
+    pdf.write_text(190, 8, "Orzeczenie lekarskie", align="C")
     pdf.set_font("Roboto", style="B", size=11)
-    pdf.cell(0, 6, "z badania przeprowadzonego do celów sanitarno-epidemiologicznych", align="C", ln=1)
+    pdf.set_x(10)
+    pdf.write_text(190, 6, "z badania przeprowadzonego do celów sanitarno-epidemiologicznych", align="C")
     
     pdf.ln(5)
     pdf.set_font("Roboto", size=10)
     preambula = "W wyniku badania lekarskiego przeprowadzonego na podstawie art. 6 ustawy z dnia 5 grudnia 2008 r. o zapobieganiu oraz zwalczaniu zakażeń i chorób zakaźnych u ludzi (Dz. U. z 2018 r. poz. 151 z późn. zm.), stwierdzono, że:"
     pdf.set_x(10)
-    pdf.multi_cell(0, 5, preambula)
+    pdf.write_text(190, 5, preambula)
     
     pdf.ln(5)
     
@@ -95,7 +100,8 @@ def create_sanepid_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     
     pdf.set_font("Roboto", style="B", size=11)
     firma_dane = f"{firma.get('NazwaFirmy', 'Prywatnie')}, {firma.get('Adres', '')}"
-    pdf.safe_text(10, pdf.get_y(), 190, 6, firma_dane)
+    pdf.set_x(10)
+    pdf.write_text(190, 6, firma_dane)
     
     pdf.ln(2)
     pdf.set_x(10)
@@ -103,7 +109,8 @@ def create_sanepid_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.cell(25, 6, "na stanowisku:")
     pdf.set_font("Roboto", style="B", size=11)
     stanowisko = str(wizyta.get('Notatki', '')).split('\n')[0].replace('Stanowisko: ', '')
-    pdf.safe_text(35, pdf.get_y(), 165, 6, stanowisko)
+    pdf.set_x(35)
+    pdf.write_text(165, 6, stanowisko)
     
     # --- DECYZJA SANEPID (Skreślenia zamiast Checkboxów) ---
     pdf.ln(6)
@@ -113,8 +120,11 @@ def create_sanepid_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.set_font("Roboto", size=10)
     
     # Opcja 1
+    pdf.set_x(10)
     y_start = pdf.get_y()
-    pdf.multi_cell(190, 5, "1) wobec braku przeciwwskazań zdrowotnych zdolny(a) do podjęcia / wykonania* prac / rozpoczęcia nauki przy których istnieje możliwość przeniesienia zakażenia na inne osoby.")
+    pdf.write_text(190, 5, "1) wobec braku przeciwwskazań zdrowotnych zdolny(a) do podjęcia / wykonania* prac / rozpoczęcia nauki przy których istnieje możliwość przeniesienia zakażenia na inne osoby.")
+    
+    pdf.set_x(10)
     if jest_zdolny:
         pdf.set_font("Roboto", style="B", size=10)
         pdf.cell(0, 6, f"Data następnego badania: {orz_data.get('DataKolejnegoBadania', '')}", ln=1)
@@ -126,9 +136,12 @@ def create_sanepid_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.ln(4)
     
     # Opcja 2
+    pdf.set_x(10)
     y_start = pdf.get_y()
-    pdf.multi_cell(190, 5, "2) wobec przeciwwskazań zdrowotnych - niezdolny(a) do podjęcia / wykonywania* prac/ rozpoczęcia nauki przy których istnieje możliwość przeniesienia zakażenia na inne osoby, w procesie:")
+    pdf.write_text(190, 5, "2) wobec przeciwwskazań zdrowotnych - niezdolny(a) do podjęcia / wykonywania* prac/ rozpoczęcia nauki przy których istnieje możliwość przeniesienia zakażenia na inne osoby, w procesie:")
+    pdf.set_x(10)
     pdf.cell(0, 5, "a) trwale*", ln=1)
+    pdf.set_x(10)
     pdf.cell(0, 5, "b) czasowo na: ........................................... Data następnego badania: ...........................................", ln=1)
     if jest_zdolny: pdf.strike_block(y_start, pdf.get_y(), 5)
     
@@ -149,7 +162,8 @@ def create_sanepid_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     else:
         pdf.set_xy(120, y_signatures - 5)
         pdf.set_font("Roboto", style="B", size=9)
-        pdf.multi_cell(70, 4, "Badanie profilaktyczne przeprowadził:\nJarosław Tarkowski\nspecjalista medycyny pracy\n30/1JT/370\n8776405", align="C")
+        pdf.set_x(120)
+        pdf.write_text(70, 4, "Badanie profilaktyczne przeprowadził:\nJarosław Tarkowski\nspecjalista medycyny pracy\n30/1JT/370\n8776405", align="C")
         pdf.set_font("Roboto", size=6)
         pdf.set_xy(120, pdf.get_y() + 5)
         pdf.cell(70, 4, "(podpis i pieczęć lekarza przeprowadzającego badania)", align="C")
@@ -175,6 +189,6 @@ def create_sanepid_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
         "*Niepotrzebne skreślić\n"
         "** W przypadku osoby, której nie nadano numeru PESEL - nazwa i numer dokumentu stwierdzającego tożsamość."
     )
-    pdf.multi_cell(0, 3, pouczenie_text)
+    pdf.write_text(190, 3, pouczenie_text)
     
     return bytes(pdf.output())
