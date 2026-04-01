@@ -48,11 +48,13 @@ if tryb_nowy_pacjent:
             value=datetime.date(1990, 1, 1)
         )
     
-    # Dodatkowe pola: adres i e-mail
-    c4, c5 = st.columns(2)
+    # Dodatkowe pola: płeć, adres i e-mail
+    c4, c5, c6 = st.columns([1, 1, 1])
     with c4:
-        n_adres = st.text_input("Adres zamieszkania", placeholder="np. ul. Medyczna 1, 00-000 Miasto")
+        n_plec = st.radio("Płeć pacjenta:", options=["Mężczyzna", "Kobieta"], horizontal=True)
     with c5:
+        n_adres = st.text_input("Adres zamieszkania", placeholder="np. ul. Medyczna 1, 00-000 Miasto")
+    with c6:
         n_email = st.text_input("Adres E-mail", placeholder="np. jan@kowalski.pl")
     
     pesel_final = n_pesel
@@ -123,9 +125,9 @@ if st.button("🚀 ZAREJESTRUJ WIZYTĘ", type="primary", use_container_width=Tru
         st.error("Proszę podać nazwę stanowiska pracy!")
     else:
         with st.spinner("Zapisywanie w bazie danych..."):
-            # KROK 1: Zapis pacjenta (7 parametrów: z E-mailem na końcu)
+            # KROK 1: Zapis pacjenta (8 parametrów: z płcią na końcu)
             if tryb_nowy_pacjent:
-                sukces_p, msg_p = add_patient_to_db(n_pesel, n_imie, n_nazwisko, str(n_data_ur), n_tel, n_adres, n_email)
+                sukces_p, msg_p = add_patient_to_db(n_pesel, n_imie, n_nazwisko, str(n_data_ur), n_tel, n_adres, n_email, n_plec)
                 if not sukces_p:
                     st.error(f"Błąd rejestracji pacjenta: {msg_p}")
                     st.stop()
