@@ -1,42 +1,45 @@
-/* --- IMPORT CZCIONKI INTER (STANDARD DLA KLASY ENTERPRISE) --- */
+/* --- IMPORT CZCIONKI INTER --- */
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-/* --- GLOBALNE USTAWIENIA --- */
+/* --- GLOBALNE USTAWIENIA (Tylko czcionka, BEZ TŁA) --- */
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif !important;
 }
 
-/* Usuwamy sztuczne wzory, tło obrazkowe wczyta db_service.py. Dajemy tylko kolor zapasowy */
-.stApp, [data-testid="stAppViewContainer"] {
-    background-color: #f8fafc !important; 
+/* Wymuszenie pełnej przezroczystości warstw Streamlita, aby tło obrazkowe było widoczne */
+.stApp, 
+[data-testid="stAppViewContainer"], 
+[data-testid="stAppViewBlockContainer"], 
+.main, 
+.block-container {
+    background: transparent !important;
+    background-color: transparent !important;
 }
 
-/* Ukrycie domyślnych elementów Streamlit dla "czystego" wyglądu */
+/* Ukrycie domyślnych elementów Streamlit */
 [data-testid="stHeader"] { display: none !important; }
 footer { visibility: hidden !important; }
 
-/* Kontener główny - lepsze marginesy i szerokość */
+/* Kontener główny - marginesy */
 .block-container {
     padding-top: 2.5rem !important;
     padding-bottom: 5rem !important;
     max-width: 1250px !important;
 }
 
-/* --- LEWE MENU (SIDEBAR) - GŁĘBOKI NIEBIESKI GRADIENT --- */
+/* --- LEWE MENU (SIDEBAR) --- */
 [data-testid="stSidebar"] {
     background: linear-gradient(180deg, #1e3a8a 0%, #172554 100%) !important;
     border-right: none !important;
     box-shadow: 4px 0 10px rgba(0,0,0,0.1);
 }
 
-/* Tekst i ikony w menu bocznym */
 [data-testid="stSidebarNav"] span {
     color: rgba(255, 255, 255, 0.8) !important;
     font-weight: 500 !important;
     font-size: 0.95rem !important;
 }
 
-/* Aktywny element menu (podświetlenie) */
 [data-testid="stSidebarNav"] a[aria-current="page"] {
     background-color: rgba(255, 255, 255, 0.12) !important;
     border-left: 4px solid #3b82f6 !important;
@@ -48,12 +51,11 @@ footer { visibility: hidden !important; }
     font-weight: 700 !important;
 }
 
-/* Efekt najechania na pozycje w menu */
 [data-testid="stSidebarNav"] li:hover {
     background-color: rgba(255, 255, 255, 0.05) !important;
 }
 
-/* --- KARTY STATYSTYK (DASHBOARD) --- */
+/* --- KARTY STATYSTYK --- */
 .premium-card {
     background: #ffffff;
     padding: 24px;
@@ -96,7 +98,7 @@ footer { visibility: hidden !important; }
     letter-spacing: -0.03em;
 }
 
-/* --- LUKSUSOWA TABELA HTML --- */
+/* --- TABELE --- */
 .custom-table-container {
     background: white;
     border-radius: 18px;
@@ -110,34 +112,7 @@ footer { visibility: hidden !important; }
     background-color: #f8fafc !important;
 }
 
-/* --- LOGO FIRMY NA DOLE SIDEBARU --- */
-.sidebar-footer {
-    position: fixed;
-    bottom: 25px;
-    left: 15px;
-    width: 230px;
-    padding: 15px;
-    background: rgba(255, 255, 255, 0.07);
-    border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    z-index: 100;
-}
-
-.footer-text {
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 0.75rem;
-    line-height: 1.3;
-}
-
-.footer-text b {
-    color: #ffffff;
-    font-size: 0.85rem;
-}
-
-/* --- PRZYCISKI (SYSTEMOWE) --- */
+/* --- PRZYCISKI --- */
 div.stButton > button {
     background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%) !important;
     color: white !important;
@@ -155,18 +130,10 @@ div.stButton > button:hover {
     filter: brightness(1.1);
 }
 
-/* Ukrycie brzydkich ramek wokół grafik w HTML */
-img {
-    border-radius: 8px;
-}
+img { border-radius: 8px; }
+input { border-radius: 10px !important; }
 
-/* Fix dla inputów, aby pasowały do stylu Inter */
-input {
-    border-radius: 10px !important;
-}
-
-/* --- SEPARATOR STREFY LEKARZA W MENU BOCZNYM --- */
-/* Szukamy elementu menu, którego link zawiera "Panel_Lekarza" */
+/* --- SEPARATOR STREFY LEKARZA --- */
 [data-testid="stSidebarNav"] li:has(a[href*="Panel_Lekarza"]) {
     margin-top: 4rem !important;
     position: relative;
