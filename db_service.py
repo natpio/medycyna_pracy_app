@@ -178,23 +178,42 @@ def apply_pro_style():
             encoded_string = base64.b64encode(image_file.read()).decode()
         st.markdown(f"""<style>[data-testid="stSidebarNav"] {{ background-image: url(data:image/png;base64,{encoded_string}); background-repeat: no-repeat; background-position: center 20px; background-size: 80%; padding-top: 150px !important; }}</style>""", unsafe_allow_html=True)
     
-    # 2. Obrazek jako tło całej aplikacji
-    bg_file = "1000036682.jpg"
+    # 2. Ostateczna poprawka tła (Wymuszenie wyświetlania, omija błędy na telefonach)
+    bg_file = "1775064952136.jpg"  # <-- ZAKTUALIZOWANA NAZWA PLIKU
     if os.path.exists(bg_file):
         with open(bg_file, "rb") as bg_image:
             encoded_bg = base64.b64encode(bg_image.read()).decode()
         st.markdown(f"""
             <style>
-            .stApp, [data-testid="stAppViewContainer"] {{
-                background-image: url("data:image/jpeg;base64,{encoded_bg}") !important;
-                background-size: cover !important;
-                background-position: center center !important;
-                background-attachment: fixed !important;
+            /* Tworzymy stałą warstwę pod aplikacją, co omija błędy iOS Safari */
+            .stApp::before {{
+                content: "";
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background-image: url("data:image/jpeg;base64,{encoded_bg}");
+                background-size: cover;
+                background-position: center center;
+                background-repeat: no-repeat;
+                z-index: -1;
+            }}
+            /* Wymuszamy przezroczystość wszystkich kontenerów nad tłem */
+            .stApp, 
+            [data-testid="stAppViewContainer"], 
+            [data-testid="stHeader"], 
+            .main, 
+            .block-container {{
+                background-color: transparent !important;
             }}
             </style>
             """, unsafe_allow_html=True)
+    else:
+        # Poinformuje Cię na ekranie, jeśli plik znowu by zniknął
+        st.sidebar.warning(f"⚠️ Nie znaleziono pliku tła: {bg_file}")
             
-    # 3. Ładowanie pliku style.css
+    # 3. Ładowanie style.css
     css_file = "style.css"
     if os.path.exists(css_file):
         with open(css_file, 'r', encoding='utf-8') as f:
@@ -203,7 +222,7 @@ def apply_pro_style():
     
     render_live_badge()
 
-    # 4. Stopka z logo firmy
+    # 4. Stopka VORTEZA
     creator_logo = "logo_firma.png" if os.path.exists("logo_firma.png") else ("logo_firma.jpg" if os.path.exists("logo_firma.jpg") else None)
     if creator_logo:
         mime = "image/png" if creator_logo.endswith(".png") else "image/jpeg"
