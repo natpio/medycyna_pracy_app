@@ -14,6 +14,7 @@ try:
     from pdf_templates.pdf_kbp import create_kbp_pdf
     from pdf_templates.pdf_sanepid import create_sanepid_pdf
     from pdf_templates.pdf_kierowca_wywiad import create_kierowca_wywiad_pdf
+    from pdf_templates.pdf_uczen import create_uczen_pdf
 except ImportError as e:
     st.error(f"Błąd importu szablonów: {e}. Upewnij się, że przeniosłeś pliki do folderu pdf_templates.")
 
@@ -80,6 +81,8 @@ def generate_pdf_router(typ_dokumentu, orz_data, wizyta, pacjent, firma, pieczat
         return create_sanepid_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
     elif typ_dokumentu == "Oświadczenie Kierowcy":
         return create_kierowca_wywiad_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
+    elif typ_dokumentu == "Zaświadczenie Uczeń/Student":
+        return create_uczen_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
     else:
         raise ValueError("Nieznany typ dokumentu")
 
@@ -113,9 +116,16 @@ if not df_orz.empty:
                 st.caption(f"PESEL: {pac.get('PESEL', '')} | Firma: {fir.get('NazwaFirmy', '')}")
             
             with col_doc:
+                # Rozwijana lista z pełnym zestawem 5 dokumentów
                 typ_dokumentu = st.selectbox(
                     "Wybierz dokument:",
-                    ["Orzeczenie Lekarskie", "Karta Badania (KBP)", "Orzeczenie Sanepid", "Oświadczenie Kierowcy"],
+                    [
+                        "Orzeczenie Lekarskie", 
+                        "Karta Badania (KBP)", 
+                        "Orzeczenie Sanepid", 
+                        "Oświadczenie Kierowcy", 
+                        "Zaświadczenie Uczeń/Student"
+                    ],
                     key=f"sel_{orz.get('ID_Orzeczenia', '')}",
                     label_visibility="collapsed"
                 )
@@ -126,7 +136,7 @@ if not df_orz.empty:
                     st.download_button(
                         label="📥 Pobierz",
                         data=pdf_bytes,
-                        file_name=f"{typ_dokumentu.replace(' ', '_')}_{pac.get('Nazwisko', '')}.pdf",
+                        file_name=f"{typ_dokumentu.replace(' ', '_').replace('/', '_')}_{pac.get('Nazwisko', '')}.pdf",
                         mime="application/pdf",
                         key=f"dl_{typ_dokumentu}_{orz.get('ID_Orzeczenia', '')}",
                         use_container_width=True
