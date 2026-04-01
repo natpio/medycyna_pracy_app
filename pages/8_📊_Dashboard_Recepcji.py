@@ -1,102 +1,95 @@
 import streamlit as st
 import pandas as pd
-import datetime
-from db_service import get_data_as_df, apply_pro_style
+from datetime import datetime
+from db_service import get_data_as_df, update_record, apply_pro_style
 
-st.set_page_config(page_title="Pulpit Recepcji", page_icon="📊", layout="wide")
-
-# --- URUCHOMIENIE STYLU PRO ---
+# --- KONFIGURACJA ---
+st.set_page_config(page_title="Dashboard Recepcji", page_icon="📊", layout="wide")
 apply_pro_style()
 
-# --- NAGŁÓWEK ---
-st.markdown("# 📊 Dzisiejszy Status Gabinetu")
-dzis = datetime.date.today()
-st.write(f"Podsumowanie operacyjne na dzień: **{dzis}**")
+st.markdown("# 📊 Dashboard Recepcji")
+st.write("Zarządzanie ruchem pacjentów i statusami wizyt w czasie rzeczywistym.")
 
-# 1. Pobranie danych
+# --- POBIERANIE DANYCH ---
 df_wizyty = get_data_as_df("Wizyty")
-df_firmy = get_data_as_df("Firmy")
 df_pacjenci = get_data_as_df("Pacjenci")
 
 if df_wizyty.empty:
-    st.info("Brak zarejestrowanych wizyt w systemie.")
+    st.info("Brak zarejestrowanych wizyt w bazie.")
     st.stop()
 
-# 2. Filtrowanie wizyt na DZISIAJ
-# Upewniamy się, że format daty w DF zgadza się z formatem str(dzis)
-df_wizyty['DataWizyty'] = df_wizyty['DataWizyty'].astype(str)
-df_dzis = df_wizyty[df_wizyty['DataWizyty'] == str(dzis)].copy()
-
-if df_dzis.empty:
-    st.warning("Na dziś nie zaplanowano jeszcze żadnych wizyt.")
-    st.stop()
-
-# 3. Obliczenia finansowe i statusowe
-total_dzis = len(df_dzis)
-zakonczone_dzis = len(df_dzis[df_dzis['Status'] == 'Zakończona'])
-oczekujace_dzis = total_dzis - zakonczone_dzis
-
-# Mapowanie cen dla dzisiejszych wizyt
-def oblicz_cene(row):
-    firma = df_firmy[df_firmy['NIP'].astype(str) == str(row['NIP_Firmy'])]
-    if firma.empty:
-        return 0
-    
-    cennik = firma.iloc[0]
-    typ = row['TypBadania']
-    
-    if typ == "Wstępne": return cennik.get('Cena_Wstepne', 0)
-    if typ == "Okresowe": return cennik.get('Cena_Okresowe', 0)
-    if typ == "Kontrolne": return cennik.get('Cena_Kontrolne', 0)
-    if typ == "Sanitarno-Epidemiologiczne": return cennik.get('Cena_Sanepid', 0)
-    return 0
-
-df_dzis['PrzewidywanyPrzychod'] = df_dzis.apply(oblicz_cene, axis=1)
-# Konwersja na liczby, by uniknąć błędów sumowania
-df_dzis['PrzewidywanyPrzychod'] = pd.to_numeric(df_dzis['PrzewidywanyPrzychod'], errors='coerce').fillna(0)
-
-utarg_zrealizowany = df_dzis[df_dzis['Status'] == 'Zakończona']['PrzewidywanyPrzychod'].sum()
-potencjalny_total = df_dzis['PrzewidywanyPrzychod'].sum()
-
-# --- WIDOK 1: METRYKI ---
-c1, c2, c3, c4 = st.columns(4)
-with c1:
-    st.metric("Wszystkie wizyty", total_dzis)
-with c2:
-    st.metric("Zakończone", zakonczone_dzis, f"{zakonczone_dzis/total_dzis:.0%}")
-with c3:
-    st.metric("W poczekalni", oczekujace_dzis)
-with c4:
-    st.metric("Utarg (zakończone)", f"{utarg_zrealizowany:,.2f} zł".replace(",", " "))
-
-# --- WIDOK 2: LISTA PACJENTÓW NA DZIŚ ---
-st.divider()
-st.subheader("📋 Lista pacjentów i statusy")
-
-# Łączymy z danymi pacjentów dla czytelności (Imię i Nazwisko)
-pacjenci_dict = {str(row['PESEL']): f"{row['Nazwisko']} {row['Imie']}" for _, row in df_pacjenci.iterrows()}
-df_dzis['Pacjent'] = df_dzis['PESEL_Pacjenta'].astype(str).map(pacjenci_dict)
-
-# Tabela do wyświetlenia
-widok_tabeli = df_dzis[['Pacjent', 'TypBadania', 'Status', 'PrzewidywanyPrzychod']].copy()
-widok_tabeli.columns = ['Pacjent', 'Rodzaj Badania', 'Status', 'Koszt [zł]']
-
-# Kolorowanie statusów
+# --- LOGIKA KOLOROWANIA (Poprawiona na .map()) ---
 def color_status(val):
-    color = '#e1f5fe' if val == 'Zaplanowana' else '#c8e6c9'
+    color = '#f1f5f9' # domyślny
+    if val == 'Zaplanowana': color = '#fef3c7' # żółty
+    elif val == 'Zakończona': color = '#d1fae5' # zielony
+    elif val == 'Anulowana': color = '#fee2e2' # czerwony
+    elif val == 'Nieobecny': color = '#e2e8f0' # szary
     return f'background-color: {color}'
 
-st.dataframe(widok_tabeli.style.map(color_status, subset=['Status']), use_container_width=True, hide_index=True)
+# --- FILTROWANIE ---
+col_f1, col_f2 = st.columns(2)
+with col_f1:
+    search_pesel = st.text_input("🔍 Szukaj po PESEL pacjenta:")
+with col_f2:
+    status_filter = st.multiselect("Filtruj statusy:", 
+                                  options=['Zaplanowana', 'Zakończona', 'Anulowana', 'Nieobecny'],
+                                  default=['Zaplanowana'])
 
-# --- WIDOK 3: FINANSE DNIA ---
+# Przygotowanie widoku
+widok = df_wizyty.copy()
+if search_pesel:
+    widok = widok[widok['PESEL_Pacjenta'].astype(str).str.contains(search_pesel)]
+if status_filter:
+    widok = widok[widok['Status'].isin(status_filter)]
+
+# Sortowanie: najnowsze na górze
+widok = widok.sort_values(by="ID_Wizyty", ascending=False)
+
+# --- WYŚWIETLANIE TABELI ---
+st.subheader("Lista wizyt")
+# Używamy .map() zamiast applymap() dla zgodności z nowym Pandas
+st.dataframe(
+    widok.style.map(color_status, subset=['Status']), 
+    use_container_width=True, 
+    hide_index=True
+)
+
 st.divider()
-col_a, col_b = st.columns(2)
 
-with col_a:
-    st.info(f"💰 **Potencjalny przychód na dziś:** {potencjalny_total:,.2f} PLN".replace(",", " "))
-    st.caption("Suma wartości wszystkich zaplanowanych badań na podstawie cenników firm.")
+# --- SEKCJA ZARZĄDZANIA WIZYTĄ (NOWOŚĆ) ---
+st.subheader("⚡ Szybka zmiana statusu")
+st.write("Wybierz wizytę, aby zmienić jej stan (np. gdy pacjent odwoła wizytę).")
 
-with col_b:
-    progress = utarg_zrealizowany / potencjalny_total if potencjalny_total > 0 else 0
-    st.write(f"**Realizacja planu finansowego:** {progress:.0%}")
-    st.progress(progress)
+# Tylko wizyty zaplanowane można anulować/zmienić na nieobecny
+wizyty_do_zmiany = widok[widok['Status'] == 'Zaplanowana']
+
+if not wizyty_do_zmiany.empty:
+    with st.expander("Zmień status wybranej wizyty"):
+        # Przygotowanie listy do wyboru: "Data - Godzina - PESEL"
+        opcje_wizyt = {
+            f"{row['DataWizyty']} {row['Godzina']} (PESEL: {row['PESEL_Pacjenta']})": row['ID_Wizyty'] 
+            for _, row in wizyty_do_zmiany.iterrows()
+        }
+        wybrana_label = st.selectbox("Wybierz wizytę z listy:", options=list(opcje_wizyt.keys()))
+        wybrane_id = opcje_wizyt[wybrana_label]
+        
+        c1, c2, c3 = st.columns(3)
+        
+        if c1.button("❌ ANULUJ WIZYTĘ", use_container_width=True, type="secondary"):
+            if update_record("Wizyty", "ID_Wizyty", wybrane_id, {"Status": "Anulowana"}):
+                st.success("Wizyta została anulowana.")
+                st.rerun()
+        
+        if c2.button("🚫 PACJENT NIEPRZYBYŁ", use_container_width=True, type="secondary"):
+            if update_record("Wizyty", "ID_Wizyty", wybrane_id, {"Status": "Nieobecny"}):
+                st.warning("Oznaczono brak obecności pacjenta.")
+                st.rerun()
+                
+        if c3.button("🔄 PRZYWRÓĆ DO ZAPLANOWANYCH", use_container_width=True):
+             # (Opcjonalnie, gdyby ktoś się pomylił)
+             if update_record("Wizyty", "ID_Wizyty", wybrane_id, {"Status": "Zaplanowana"}):
+                st.info("Przywrócono status Zaplanowana.")
+                st.rerun()
+else:
+    st.caption("Brak wizyt o statusie 'Zaplanowana' do edycji.")
