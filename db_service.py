@@ -231,7 +231,7 @@ def apply_pro_style():
                 background-position: center center;
                 background-repeat: no-repeat;
                 z-index: -1;
-                opacity: 0.4; /* <-- ZMNIEJSZONA INTENSYWNOŚĆ TŁA */
+                opacity: 0.6; /* <-- ZMNIEJSZONA INTENSYWNOŚĆ TŁA */
             }}
             /* Wymuszamy przezroczystość wszystkich kontenerów nad tłem */
             .stApp, 
