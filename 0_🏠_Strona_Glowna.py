@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date, timedelta
+import calendar
 from db_service import get_data_as_df, apply_pro_style
 
 # --- 1. KONFIGURACJA ---
@@ -11,7 +12,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Wstrzyknięcie stylów CSS oraz automatyczne ładowanie Logo i Stopki VORTEZA
 apply_pro_style()
 
 # --- 2. KOMPONENTY PREMIUM UI ---
@@ -35,13 +35,73 @@ def render_premium_card(title, value, icon, badge_text, badge_color, badge_bg):
     """
     st.markdown(card_html, unsafe_allow_html=True)
 
+def render_calendar_grid(df_wizyty):
+    """Generuje wizualną siatkę kalendarza z obłożeniem."""
+    dzis = date.today()
+    rok, miesiac = dzis.year, dzis.month
+    
+    # Nazwa miesiąca po polsku
+    miesiace_pl = {1: "Styczeń", 2: "Luty", 3: "Marzec", 4: "Kwiecień", 5: "Maj", 6: "Czerwiec", 
+                   7: "Lipiec", 8: "Sierpień", 9: "Wrzesień", 10: "Październik", 11: "Listopad", 12: "Grudzień"}
+    
+    st.markdown(f"#### 🗓️ Radar Obłożenia: {miesiace_pl[miesiac]} {rok}")
+    
+    # Przygotowanie danych (zliczanie wizyt na dzień)
+    if not df_wizyty.empty:
+        counts = df_wizyty['DataWizyty_dt'].value_counts().to_dict()
+    else:
+        counts = {}
+
+    # Nagłówki dni tygodnia
+    days_header = ["Pn", "Wt", "Śr", "Czw", "Pt", "Sob", "Nd"]
+    cols = st.columns(7)
+    for i, day in enumerate(days_header):
+        cols[i].markdown(f"<div style='text-align: center; color: #64748b; font-weight: 700; font-size: 0.8rem; margin-bottom: 5px;'>{day}</div>", unsafe_allow_html=True)
+
+    # Logika kalendarza
+    cal = calendar.Calendar(firstweekday=0)
+    month_days = cal.monthdayscalendar(rok, miesiac)
+
+    for week in month_days:
+        week_cols = st.columns(7)
+        for i, day in enumerate(week):
+            if day == 0:
+                week_cols[i].markdown("<div style='height: 60px;'></div>", unsafe_allow_html=True)
+            else:
+                curr_date = date(rok, miesiac, day)
+                wizyty_count = counts.get(curr_date, 0)
+                
+                # Stylizacja komórki
+                is_today = (curr_date == dzis)
+                bg_color = "#1e3a8a" if is_today else ("#eff6ff" if wizyty_count > 0 else "#ffffff")
+                text_color = "#ffffff" if is_today else ("#1e40af" if wizyty_count > 0 else "#64748b")
+                border = "2px solid #3b82f6" if is_today else "1px solid #e2e8f0"
+                
+                cell_content = f"""
+                <div style="
+                    background: {bg_color}; 
+                    color: {text_color}; 
+                    border: {border}; 
+                    border-radius: 12px; 
+                    padding: 8px; 
+                    height: 65px; 
+                    text-align: center;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+                ">
+                    <div style="font-size: 0.75rem; font-weight: 800;">{day}</div>
+                    <div style="font-size: 0.85rem; font-weight: 700; margin-top: 4px;">
+                        {"👤 " + str(wizyty_count) if wizyty_count > 0 else ""}
+                    </div>
+                </div>
+                """
+                week_cols[i].markdown(cell_content, unsafe_allow_html=True)
+
 def render_activity_table(df):
-    """Renderuje tabelę aktywności - wersja 'Bulletproof'."""
+    """Renderuje tabelę aktywności."""
     if df is None or df.empty:
         st.markdown("<p style='color: #64748b; padding: 20px;'>Brak nadchodzących wizyt.</p>", unsafe_allow_html=True)
         return
 
-    # Nagłówek tabeli
     html = '<div class="custom-table-container"><table style="width: 100%; border-collapse: collapse; background: white;">'
     html += '<thead><tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">'
     html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Badanie / Status</th>'
@@ -49,13 +109,11 @@ def render_activity_table(df):
     html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Status</th>'
     html += '</tr></thead><tbody>'
 
-    # Wiersze
     for _, row in df.iterrows():
         status = str(row['Status'])
         is_done = (status == "Zakończona")
         bg, txt = ("#d1fae5", "#059669") if is_done else ("#fef3c7", "#d97706")
         icon_bg, icon_color = ("#eff6ff", "#3b82f6") if is_done else ("#fff7ed", "#f97316")
-        
         typ = str(row['TypBadania'])
         litera = typ[0] if typ else "?"
         
@@ -79,7 +137,7 @@ def render_activity_table(df):
     html += '</tbody></table></div>'
     st.write(html, unsafe_allow_html=True)
 
-# --- 3. LOGIKA POBIERANIA DANYCH I INTELIGENTNE FILTROWANIE ---
+# --- 3. LOGIKA POBIERANIA DANYCH ---
 try:
     df_wizyty = get_data_as_df("Wizyty")
     df_pacjenci = get_data_as_df("Pacjenci")
@@ -88,41 +146,28 @@ except:
     df_wizyty = pd.DataFrame(columns=['DataWizyty', 'TypBadania', 'Status'])
     df_pacjenci = df_firmy = pd.DataFrame()
 
-# Ustalenie dzisiejszej daty z uwzględnieniem strefy czasowej w chmurze
 dzis = pd.Timestamp.today(tz='Europe/Warsaw').date()
 wiz_dzis = 0
 df_do_tabeli = pd.DataFrame()
 
 if not df_wizyty.empty:
-    # Bezpieczna konwersja dat wizyt do formatu pozwalającego na matematykę (porównania)
     df_wizyty['DataWizyty_dt'] = pd.to_datetime(df_wizyty['DataWizyty'], errors='coerce').dt.date
-
-    # KPI: Obliczamy ile wizyt jest zaplanowanych na dzisiaj (wszystkie statusy)
     wiz_dzis = len(df_wizyty[df_wizyty['DataWizyty_dt'] == dzis])
-
-    # FILTROWANIE OPERACYJNE (Inteligentny Radar)
-    # Warunek 1: Pokaż Zaplanowane na dzisiaj i w przyszłości
     mask_zaplanowane = (df_wizyty['Status'] == 'Zaplanowana') & (df_wizyty['DataWizyty_dt'] >= dzis)
-    # Warunek 2: Pokaż Zakończone, ale TYLKO z dzisiaj
     mask_zakonczone_dzis = (df_wizyty['Status'] == 'Zakończona') & (df_wizyty['DataWizyty_dt'] == dzis)
-
     df_do_tabeli = df_wizyty[mask_zaplanowane | mask_zakonczone_dzis].copy()
-
     if not df_do_tabeli.empty:
-        # Sortowanie: najpierw data, potem status odwrotnie alfabetycznie (Z-aplanowana wyżej niż Z-akończona)
-        df_do_tabeli = df_do_tabeli.sort_values(by=['DataWizyty_dt', 'Status'], ascending=[True, False]).head(8)
+        df_do_tabeli = df_do_tabeli.sort_values(by=['DataWizyty_dt', 'Status'], ascending=[True, False]).head(5)
 
 # --- 4. WIDOK GŁÓWNY ---
 
-# Nagłówek Dashboardu
 st.markdown("""
-    <div style="margin-bottom: 2.5rem;">
+    <div style="margin-bottom: 1.5rem;">
         <h1 style="font-weight: 800; color: #0f172a; letter-spacing: -1.8px; margin-bottom: 4px; font-size: 2.8rem;">Dashboard</h1>
         <p style="color: #64748b; font-size: 1.15rem; font-weight: 500;">Medycyna Pracy | Panel Zarządzania</p>
     </div>
 """, unsafe_allow_html=True)
 
-# Górne karty KPI
 c1, c2, c3 = st.columns(3)
 with c1:
     render_premium_card("Pacjenci", str(len(df_pacjenci)), "👥", "Aktywni", "#059669", "#d1fae5")
@@ -133,17 +178,23 @@ with c3:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# Dolna sekcja: Tabela i Szybkie Akcje
-col_l, col_r = st.columns([2.2, 1])
+# GŁÓWNA SEKCJA: KALENDARZ I TABELA
+col_main, col_side = st.columns([2.2, 1])
 
-with col_l:
-    st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Wizyty operacyjne (od dziś)</h4>", unsafe_allow_html=True)
+with col_main:
+    # Sekcja kalendarza
+    render_calendar_grid(df_wizyty)
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    # Sekcja tabeli
+    st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Najbliższe wizyty</h4>", unsafe_allow_html=True)
     if not df_do_tabeli.empty:
         render_activity_table(df_do_tabeli)
     else:
-        st.info("Brak aktywnych wizyt na dziś i nadchodzące dni. Mamy wolne!")
+        st.info("Brak aktywnych wizyt.")
 
-with col_r:
+with col_side:
     st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Szybkie akcje</h4>", unsafe_allow_html=True)
     if st.button("➕ Nowy Pacjent", use_container_width=True):
         st.switch_page("pages/1_👤_Rejestracja_Pacjenta.py")
