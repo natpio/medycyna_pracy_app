@@ -13,11 +13,11 @@ from db_service import (
 # --- 1. KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Szybka Rejestracja", page_icon="📞", layout="wide")
 
-# Zaaplikowanie profesjonalnego stylu CSS
+# Zaaplikowanie profesjonalnego stylu CSS (tło, czcionki, menu)
 apply_pro_style()
 
 st.markdown("# 📞 Szybka Rejestracja i Wizyta")
-st.write("Centrum obsługi pacjenta: zarejestruj nową osobę lub umów stałego pacjenta w kilka sekund.")
+st.write("Centrum obsługi pacjenta: zarejestruj nową osobę lub umów stałego pacjenta.")
 
 # --- 2. POBIERANIE DANYCH ---
 df_pacjenci = get_data_as_df("Pacjenci")
@@ -31,111 +31,97 @@ st.info("💡 Rozmawiasz z nowym pacjentem? Użyj przełącznika, aby dodać go 
 # Przełącznik trybu rejestracji
 tryb_nowy_pacjent = st.toggle("✨ **NOWY PACJENT** (brak w systemie)", value=False)
 
-col_p1, col_p2 = st.columns(2)
-
-if not tryb_nowy_pacjent:
-    with col_p1:
-        if not df_pacjenci.empty:
-            # Tworzenie listy wyszukiwania: Nazwisko Imię (PESEL)
-            pacjent_options = {f"{row['Nazwisko']} {row['Imie']} ({row['PESEL']})": row['PESEL'] for _, row in df_pacjenci.iterrows()}
-            wybrany_label = st.selectbox("Wyszukaj pacjenta w bazie:", options=["--- Zacznij wpisywać nazwisko ---"] + list(pacjent_options.keys()))
-            pesel_final = pacjent_options.get(wybrany_label)
-        else:
-            st.warning("Baza pacjentów jest pusta. Przełącz na 'Nowy Pacjent'.")
-            pesel_final = None
-else:
-    with col_p1:
+if tryb_nowy_pacjent:
+    st.subheader("🆕 Dane podstawowe nowego pacjenta")
+    c1, c2, c3 = st.columns(3)
+    with c1:
         n_imie = st.text_input("Imię")
+        n_pesel = st.text_input("PESEL", max_chars=11)
+    with c2:
         n_nazwisko = st.text_input("Nazwisko")
-    with col_p2:
-        n_pesel = st.text_input("PESEL", max_chars=11, help="Wymagane 11 cyfr")
-        n_tel = st.text_input("Telefon kontaktowy")
+        n_tel = st.text_input("Telefon")
+    with c3:
+        # Dodane pole daty urodzenia bezpośrednio w szybkiej rejestracji
+        n_data_ur = st.date_input(
+            "Data urodzenia", 
+            min_value=datetime.date(1940, 1, 1),
+            max_value=datetime.date.today(),
+            value=datetime.date(1990, 1, 1)
+        )
+    
     pesel_final = n_pesel
+else:
+    st.subheader("🔍 Wybierz pacjenta z bazy")
+    if not df_pacjenci.empty:
+        # Tworzymy listę do wyszukiwania
+        lista_p = {f"{row['Nazwisko']} {row['Imie']} ({row['PESEL']})": row['PESEL'] for _, row in df_pacjenci.iterrows()}
+        wybrany_p = st.selectbox("Wyszukaj pacjenta:", options=list(lista_p.keys()))
+        pesel_final = lista_p[wybrany_p]
+    else:
+        st.warning("Baza pacjentów jest pusta. Użyj trybu 'NOWY PACJENT'.")
+        st.stop()
 
 st.divider()
 
-# --- 4. WYBÓR TERMINU I PRZYNALEŻNOŚCI ---
-st.subheader("🗓️ Termin i Firma")
-c_date, c_time, c_firma = st.columns([1, 1, 2])
+# --- 4. SZCZEGÓŁY WIZYTY ---
+st.subheader("🏢 Firma i Stanowisko")
+col_f1, col_f2 = st.columns(2)
 
-with c_date:
-    data_wizyty = st.date_input("Data wizyty:", min_value=datetime.date.today(), value=datetime.date.today())
-
-with c_time:
-    # Generator slotów (08:00 - 16:00, co 15 minut)
-    all_slots = [f"{h:02d}:{m:02d}" for h in range(8, 16) for m in (0, 15, 30, 45)]
-    
-    # Filtrowanie już zajętych godzin w wybranym dniu
-    zajete_godziny = []
-    if not df_wizyty.empty and 'Godzina' in df_wizyty.columns:
-        mask = (df_wizyty['DataWizyty'].astype(str) == str(data_wizyty)) & (df_wizyty['Status'] != 'Anulowana')
-        zajete_godziny = df_wizyty[mask]['Godzina'].astype(str).tolist()
-    
-    wolne_sloty = [s for s in all_slots if s not in zajete_godziny]
-    godzina_final = st.selectbox(f"Dostępne sloty ({len(wolne_sloty)}):", options=wolne_sloty if wolne_sloty else ["Brak wolnych miejsc"])
-
-with c_firma:
-    # Opcja prywatna jest domyślna, aby nie blokować procesu
-    firma_options = {"🏢 BRAK / WIZYTA PRYWATNA": "0"}
+with col_f1:
     if not df_firmy.empty:
-        for _, row in df_firmy.iterrows():
-            firma_options[f"{row['NazwaFirmy']} (NIP: {row['NIP']})"] = row['NIP']
-    
-    wybrana_firma_label = st.selectbox("Firma kierująca (opcjonalnie):", options=list(firma_options.keys()))
-    nip_final = firma_options.get(wybrana_firma_label)
+        firmy_dict = {row['NazwaFirmy']: row['NIP'] for _, row in df_firmy.iterrows()}
+        wybrana_f = st.selectbox("Firma kierująca:", options=["PRYWATNIE / BRAK"] + list(firmy_dict.keys()))
+        nip_final = firmy_dict[wybrana_f] if wybrana_f != "PRYWATNIE / BRAK" else "0"
+    else:
+        st.error("Błąd: Nie znaleziono żadnych firm w bazie.")
+        nip_final = "0"
 
-st.divider()
-
-# --- 5. SZCZEGÓŁY BADANIA I STANOWISKO ---
-st.subheader("🛠️ Szczegóły skierowania")
-col_s1, col_s2 = st.columns(2)
-
-with col_s1:
-    typ_badania = st.radio("Rodzaj badania:", ["Wstępne", "Okresowe", "Kontrolne", "Sanitarno-Epidemiologiczne"], horizontal=True)
-    
-    # Jeśli wybrano firmę, pobierz jej słownik stanowisk
+with col_f2:
     if nip_final != "0":
-        stanowiska_firmy = df_stanowiska[df_stanowiska['NIP_Firmy'].astype(str) == str(nip_final)] if not df_stanowiska.empty else pd.DataFrame()
-        opcje_st = ["--- Wybierz ze słownika firmy ---"] + (stanowiska_firmy['NazwaStanowiska'].tolist() if not stanowiska_firmy.empty else []) + ["➕ NOWE STANOWISKO"]
+        st_firmy = df_stanowiska[df_stanowiska['NIP_Firmy'].astype(str) == str(nip_final)]
+        opcje_st = ["➕ NOWE STANOWISKO"] + list(st_firmy['NazwaStanowiska'].unique())
         wybrane_st = st.selectbox("Stanowisko pracy:", options=opcje_st)
     else:
-        # Dla wizyt prywatnych od razu pozwalamy na wpisanie ręczne
         wybrane_st = "➕ NOWE STANOWISKO"
-        st.caption("Wizyta prywatna: podaj stanowisko/cel badania ręcznie.")
 
-with col_s2:
-    if wybrane_st == "➕ NOWE STANOWISKO":
-        final_st_nazwa = st.text_input("Nazwa stanowiska:", placeholder="np. Kierowca, Magazynier, Cele Sanitarno-Epid.")
-        final_czynniki = st.text_area("Czynniki szkodliwe / Zagrożenia (opcjonalnie):")
-    elif wybrane_st != "--- Wybierz ze słownika firmy ---":
-        # Pobranie zagrożeń ze słownika
-        row_st = stanowiska_firmy[stanowiska_firmy['NazwaStanowiska'] == wybrane_st].iloc[0]
-        final_st_nazwa = wybrane_st
-        final_czynniki = row_st['CzynnikiSzkodliwe']
-        st.info(f"**Zagrożenia przypisane do stanowiska:**\n\n{final_czynniki}")
+# Obsługa nowego stanowiska
+if wybrane_st == "➕ NOWE STANOWISKO":
+    c_s1, c_s2 = st.columns(2)
+    final_st_nazwa = c_s1.text_input("Nazwa nowego stanowiska:", placeholder="np. Kierowca kat. C")
+    final_czynniki = c_s2.text_area("Czynniki szkodliwe / Notatki:", placeholder="np. hałas, praca na wysokości...")
+else:
+    final_st_nazwa = wybrane_st
+    row_st = st_firmy[st_firmy['NazwaStanowiska'] == wybrane_st].iloc[0]
+    final_czynniki = row_st['CzynnikiSzkodliwe']
+    st.caption(f"**Automatyczne czynniki:** {final_czynniki}")
+
+st.divider()
+
+# --- 5. TERMIN I FINALIZACJA ---
+st.subheader("📅 Termin wizyty")
+c_t1, c_t2, c_t3 = st.columns(3)
+
+data_wizyty = c_t1.date_input("Data wizyty:", min_value=datetime.date.today())
+typ_badania = c_t2.selectbox("Rodzaj badania:", ["Wstępne", "Okresowe", "Kontrolne", "Sanitarne", "Kierowca", "Inne"])
+
+# Lista godzin
+godziny = [f"{h:02d}:00" for h in range(8, 16)] + [f"{h:02d}:30" for h in range(8, 16)]
+godziny.sort()
+wybrana_godzina = c_t3.selectbox("Godzina:", godziny)
+
+if st.button("🚀 ZAREJESTRUJ WIZYTĘ", type="primary", use_container_width=True):
+    # Walidacja danych dla nowego pacjenta
+    if tryb_nowy_pacjent and (not n_pesel or not n_imie or not n_nazwisko):
+        st.error("Uzupełnij imię, nazwisko i PESEL nowego pacjenta!")
+    elif not final_st_nazwa:
+        st.error("Proszę podać nazwę stanowiska pracy!")
     else:
-        final_st_nazwa = ""
-        final_czynniki = ""
-
-st.write("")
-
-# --- 6. LOGIKA FINALIZACJI (ALL-IN-ONE) ---
-if st.button("🚀 ZAREJESTRUJ WIZYTĘ I ZABLOKUJ TERMIN", type="primary", use_container_width=True):
-    # Walidacja danych
-    if not pesel_final or len(str(pesel_final)) != 11:
-        st.error("Błąd: Podaj poprawny numer PESEL (11 cyfr).")
-    elif godzina_final == "Brak wolnych miejsc":
-        st.error("Błąd: Nie można zarezerwować terminu w tym dniu.")
-    elif (wybrane_st == "--- Wybierz ze słownika firmy ---") or (wybrane_st == "➕ NOWE STANOWISKO" and not final_st_nazwa):
-        st.error("Błąd: Podaj nazwę stanowiska pracy.")
-    else:
-        with st.spinner("Procesowanie rejestracji..."):
-            # KROK 1: Jeśli pacjent jest nowy, stwórz mu kartę
+        with st.spinner("Zapisywanie w bazie danych..."):
+            # KROK 1: Jeśli pacjent jest nowy, stwórz mu kartę z pełnymi danymi
             if tryb_nowy_pacjent:
-                # Ustawiamy domyślną datę (do poprawy później przez lekarza), aby nie tracić czasu przez telefon
-                sukces_p, msg_p = add_patient_to_db(n_pesel, n_imie, n_nazwisko, "1900-01-01", n_tel)
+                sukces_p, msg_p = add_patient_to_db(n_pesel, n_imie, n_nazwisko, str(n_data_ur), n_tel)
                 if not sukces_p:
-                    st.error(f"Nie udało się dodać pacjenta: {msg_p}")
+                    st.error(f"Błąd rejestracji pacjenta: {msg_p}")
                     st.stop()
 
             # KROK 2: Jeśli wybrano firmę i nowe stanowisko, zapisz je w jej katalogu
@@ -143,19 +129,19 @@ if st.button("🚀 ZAREJESTRUJ WIZYTĘ I ZABLOKUJ TERMIN", type="primary", use_c
                 add_stanowisko_to_db(nip_final, final_st_nazwa, final_czynniki)
 
             # KROK 3: Zapisz wizytę w kalendarzu
-            notatki_wizyty = f"Stanowisko: {final_st_nazwa}\nZagrożenia: {final_czynniki}"
+            notatki_wizyty = f"Stanowisko: {final_st_nazwa}\\nZagrożenia: {final_czynniki}"
             sukces_w, msg_w = add_appointment_to_db(
                 pesel=pesel_final,
                 nip_firmy=nip_final,
                 typ_badania=typ_badania,
                 notatki=notatki_wizyty,
                 data_wizyty=data_wizyty,
-                godzina=godzina_final
+                godzina=wybrana_godzina
             )
 
             if sukces_w:
+                st.success(f"✅ Wizyta zarejestrowana poprawnie!")
                 st.balloons()
-                st.success(f"Zakończono pomyślnie! {msg_w}")
-                st.info(f"Slot {godzina_final} w dniu {data_wizyty} jest teraz zajęty.")
-                # Odświeżenie danych, aby slot zniknął z listy
-                st.cache_data.clear()
+                # Opcjonalnie: st.rerun() po krótkiej chwili
+            else:
+                st.error(f"Błąd zapisu wizyty: {msg_w}")
