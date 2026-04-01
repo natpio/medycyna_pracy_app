@@ -82,13 +82,16 @@ def update_record(worksheet_name, id_col_name, id_value, update_dict):
         st.error(f"Błąd aktualizacji bazy: {e}")
         return False
 
-def add_patient_to_db(pesel, imie, nazwisko, data_urodzenia, telefon):
+# ZAKTUALIZOWANA FUNKCJA: DODANO PARAMETR "adres"
+def add_patient_to_db(pesel, imie, nazwisko, data_urodzenia, telefon, adres=""):
     sh = get_db_connection()
     ws = sh.worksheet("Pacjenci")
     existing_pesels = ws.col_values(1)
     if str(pesel) in existing_pesels:
         return False, "Pacjent o takim numerze PESEL już istnieje w bazie."
-    ws.append_row([str(pesel), imie, nazwisko, str(data_urodzenia), telefon])
+    
+    # Dodajemy adres jako 6. element listy, do nowej kolumny w arkuszu
+    ws.append_row([str(pesel), imie, nazwisko, str(data_urodzenia), telefon, adres])
     st.cache_data.clear()
     return True, "Pacjent dodany pomyślnie."
 
