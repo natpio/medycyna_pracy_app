@@ -13,11 +13,11 @@ from db_service import (
 # --- 1. KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Szybka Rejestracja", page_icon="📞", layout="wide")
 
-# Zaaplikowanie profesjonalnego stylu CSS (tło, czcionki, menu)
+# Zaaplikowanie profesjonalnego stylu CSS
 apply_pro_style()
 
 st.markdown("# 📞 Szybka Rejestracja i Wizyta")
-st.write("Centrum obsługi pacjenta: zarejestruj nową osobę lub umów stałego pacjenta.")
+st.write("Centrum obsługi pacjenta: zarejestruj nową osobę lub umów stałego pacjenta w kilka sekund.")
 
 # --- 2. POBIERANIE DANYCH ---
 df_pacjenci = get_data_as_df("Pacjenci")
@@ -41,13 +41,15 @@ if tryb_nowy_pacjent:
         n_nazwisko = st.text_input("Nazwisko")
         n_tel = st.text_input("Telefon")
     with c3:
-        # Dodane pole daty urodzenia bezpośrednio w szybkiej rejestracji
         n_data_ur = st.date_input(
             "Data urodzenia", 
             min_value=datetime.date(1940, 1, 1),
             max_value=datetime.date.today(),
             value=datetime.date(1990, 1, 1)
         )
+    
+    # NOWOŚĆ: Pole na adres zamieszkania
+    n_adres = st.text_input("Adres zamieszkania", placeholder="np. ul. Medyczna 1, 00-000 Miasto")
     
     pesel_final = n_pesel
 else:
@@ -117,9 +119,10 @@ if st.button("🚀 ZAREJESTRUJ WIZYTĘ", type="primary", use_container_width=Tru
         st.error("Proszę podać nazwę stanowiska pracy!")
     else:
         with st.spinner("Zapisywanie w bazie danych..."):
-            # KROK 1: Jeśli pacjent jest nowy, stwórz mu kartę z pełnymi danymi
+            # KROK 1: Jeśli pacjent jest nowy, stwórz mu kartę z pełnymi danymi (w tym Adres)
             if tryb_nowy_pacjent:
-                sukces_p, msg_p = add_patient_to_db(n_pesel, n_imie, n_nazwisko, str(n_data_ur), n_tel)
+                # Wysłanie 6 parametrów do funkcji db_service, zgodnie z nową wersją (Adres na końcu)
+                sukces_p, msg_p = add_patient_to_db(n_pesel, n_imie, n_nazwisko, str(n_data_ur), n_tel, n_adres)
                 if not sukces_p:
                     st.error(f"Błąd rejestracji pacjenta: {msg_p}")
                     st.stop()
@@ -142,6 +145,5 @@ if st.button("🚀 ZAREJESTRUJ WIZYTĘ", type="primary", use_container_width=Tru
             if sukces_w:
                 st.success(f"✅ Wizyta zarejestrowana poprawnie!")
                 st.balloons()
-                # Opcjonalnie: st.rerun() po krótkiej chwili
             else:
                 st.error(f"Błąd zapisu wizyty: {msg_w}")
