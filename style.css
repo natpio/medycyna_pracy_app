@@ -4,9 +4,13 @@
 /* --- GLOBALNE USTAWIENIA --- */
 html, body, [class*="css"] {
     font-family: 'Inter', sans-serif !important;
+}
+
+/* Wymuszenie tła specjalnie na głównych kontenerach Streamlita */
+.stApp, [data-testid="stAppViewContainer"] {
     background-color: #f8fafc !important; /* Bazowy, jasny kolor */
-    background-image: linear-gradient(rgba(203, 213, 225, 0.25) 1px, transparent 1px),
-                      linear-gradient(90deg, rgba(203, 213, 225, 0.25) 1px, transparent 1px) !important;
+    background-image: linear-gradient(rgba(100, 116, 139, 0.25) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(100, 116, 139, 0.25) 1px, transparent 1px) !important;
     background-size: 30px 30px !important; /* Wielkość kratek */
 }
 
