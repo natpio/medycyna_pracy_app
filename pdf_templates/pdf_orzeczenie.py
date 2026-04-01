@@ -6,27 +6,48 @@ from fpdf import FPDF
 
 class OrzeczeniePDF(FPDF):
     def strike_text(self, text, h=4):
+        """Rysuje przekreślony pojedynczy tekst"""
         x, y = self.get_x(), self.get_y()
         w = self.get_string_width(text)
         self.cell(w, h, text)
         self.line(x, y + h/2.2, x + w, y + h/2.2)
 
-    def print_options(self, options, selected_idx, h=4, spacer="; "):
+    def print_options(self, options, selected_idx, h=4, spacer=" / ", max_x=195):
+        """Inteligentne rysowanie opcji z automatycznym łamaniem linii"""
+        start_x = self.get_x()
         for i, opt in enumerate(options):
+            opt_w = self.get_string_width(opt)
+            spacer_w = self.get_string_width(spacer) if i < len(options)-1 else 0
+            
+            # Bezpiecznik: jeśli tekst wychodzi poza stronę, przenieś do nowej linii
+            if self.get_x() + opt_w + spacer_w > max_x:
+                self.ln(h)
+                self.set_x(start_x)
+                
             if i == selected_idx:
                 self.set_font("Roboto", style="B")
-                self.cell(self.get_string_width(opt), h, opt)
+                self.cell(opt_w, h, opt)
                 self.set_font("Roboto", style="")
             else:
                 self.strike_text(opt, h)
+                
             if i < len(options) - 1:
-                self.cell(self.get_string_width(spacer), h, spacer)
+                self.cell(spacer_w, h, spacer)
 
-    def strike_multicell(self, x, y, w, h, text):
+    def strike_block(self, y_start, y_end, line_h=5, x_start=10, x_end=190):
+        """Rysuje precyzyjne przekreślenia na blokach tekstu (linijka po linijce)"""
+        curr_y = y_start
+        while curr_y < y_end - 1:
+            self.line(x_start, curr_y + line_h/2.2, x_end, curr_y + line_h/2.2)
+            curr_y += line_h
+
+    def draw_form_box(self, x, y, w, h, label, value, is_bold=False):
         self.set_xy(x, y)
-        self.multi_cell(w, h, text)
-        y_end = self.get_y()
-        self.line(x, y + (y_end - y)/2, x + w if w > 0 else 190, y + (y_end - y)/2)
+        self.set_font("Roboto", size=6)
+        self.cell(w, 3, label, ln=1)
+        self.set_xy(x, y + 3)
+        self.set_font("Roboto", style="B" if is_bold else "", size=9)
+        self.multi_cell(w, h - 3, str(value), border=1, align='L')
 
 def init_pdf(font_reg, font_bold, font_italic):
     pdf = OrzeczeniePDF()
@@ -102,9 +123,9 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path, font
     pdf.ln(4)
     pdf.set_font("Roboto", size=10)
     
-    # Skreślenie statusu zatrudnienia
+    # Skreślanie dla zatrudnienia
     idx_zatr = 1 if "wstępne" in typ_bad else 0
-    pdf.print_options(["zatrudniony(-na)", "przyjmowany(-na)"], idx_zatr, 6, " / ")
+    pdf.print_options(["Zatrudniony(-na)", "Przyjmowany(-na)"], idx_zatr, 6, " / ")
     pdf.cell(pdf.get_string_width(" do pracy w: "), 6, " do pracy w: ")
     
     pdf.set_font("Roboto", style="B", size=11)
@@ -125,20 +146,20 @@ def create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, signature_path, font
     
     pdf.set_font("Roboto", size=10)
     
-    # DECYZJE - Przekreślane całe linie!
+    # Bezpieczne skreślanie akapitów decyzji (linia po linii)
     y_start = pdf.get_y()
     pdf.multi_cell(0, 5, "wobec braku przeciwwskazań zdrowotnych jest zdolny(-na) do wykonywania pracy na określonym stanowisku (symbol 21)*)")
-    if not jest_zdolny: pdf.strike_multicell(10, y_start, 0, pdf.get_y() - y_start, "wobec braku przeciwwskazań zdrowotnych jest zdolny(-na) do wykonywania pracy na określonym stanowisku (symbol 21)*)")
+    if not jest_zdolny: pdf.strike_block(y_start, pdf.get_y(), 5)
     pdf.ln(3)
     
     y_start = pdf.get_y()
     pdf.multi_cell(0, 5, "wobec istnienia przeciwwskazań zdrowotnych jest niezdolny(-na) do wykonywania pracy na określonym stanowisku (symbol 22)*)")
-    if jest_zdolny: pdf.strike_multicell(10, y_start, 0, pdf.get_y() - y_start, "wobec istnienia przeciwwskazań zdrowotnych jest niezdolny(-na) do wykonywania pracy na określonym stanowisku (symbol 22)*)")
+    if jest_zdolny: pdf.strike_block(y_start, pdf.get_y(), 5)
     pdf.ln(3)
     
     y_start = pdf.get_y()
     pdf.multi_cell(0, 5, "wobec istnienia przeciwwskazań zdrowotnych utracił(a) zdolność do wykonywania dotychczasowej pracy z dniem .................................. (symbol 23)*).")
-    pdf.strike_multicell(10, y_start, 0, pdf.get_y() - y_start, "wobec istnienia przeciwwskazań zdrowotnych utracił(a) zdolność do wykonywania dotychczasowej pracy z dniem .................................. (symbol 23)*).")
+    pdf.strike_block(y_start, pdf.get_y(), 5) # Zawsze skreślone
     
     pdf.ln(8)
     pdf.set_font("Roboto", size=10)
