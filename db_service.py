@@ -1,7 +1,7 @@
 import streamlit as st
 import gspread
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 import hashlib
 import os
 import base64
@@ -82,7 +82,6 @@ def update_record(worksheet_name, id_col_name, id_value, update_dict):
         st.error(f"Błąd aktualizacji bazy: {e}")
         return False
 
-# ZAKTUALIZOWANA FUNKCJA: 8 parametrów (adres, email, plec na końcu)
 def add_patient_to_db(pesel, imie, nazwisko, data_urodzenia, telefon, adres="", email="", plec=""):
     sh = get_db_connection()
     ws = sh.worksheet("Pacjenci")
@@ -148,6 +147,37 @@ def add_stanowisko_to_db(nip_firmy, nazwa_stanowiska, czynniki):
     ws.append_row([str(nip_firmy), nazwa_stanowiska, czynniki])
     st.cache_data.clear()
     return True, f"Stanowisko '{nazwa_stanowiska}' zostało dodane."
+
+# --- FUNKCJA DEKODUJĄCA PESEL ---
+def dekoduj_pesel(pesel):
+    """Wyciąga datę urodzenia i płeć z numeru PESEL."""
+    if not pesel or len(str(pesel)) != 11 or not str(pesel).isdigit():
+        return None, None
+    
+    p = str(pesel)
+    
+    # 1. Wyliczanie płci (10. cyfra, indeks 9)
+    plec = "Kobieta" if int(p[9]) % 2 == 0 else "Mężczyzna"
+    
+    # 2. Wyliczanie daty urodzenia
+    rok = int(p[0:2])
+    miesiac = int(p[2:4])
+    dzien = int(p[4:6])
+    
+    if 1 <= miesiac <= 12:
+        rok += 1900
+    elif 21 <= miesiac <= 32:
+        rok += 2000
+        miesiac -= 20
+    elif 81 <= miesiac <= 92:
+        rok += 1800
+        miesiac -= 80
+        
+    try:
+        data_urodzenia = date(rok, miesiac, dzien)
+        return data_urodzenia, plec
+    except ValueError:
+        return None, None
 
 @st.fragment(run_every="10s")
 def render_live_badge():
