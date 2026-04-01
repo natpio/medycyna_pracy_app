@@ -42,6 +42,7 @@ class KartaBadaniaPDF(FPDF):
         self.cell(w, 3, label, ln=1)
         self.set_xy(x, y + 3)
         self.set_font("Roboto", style="B" if is_bold else "", size=9)
+        # multi_cell bezpiecznie łamie tekst, o ile ma w nim spacje
         self.multi_cell(w, h - 3, str(value), border=1, align='L')
 
 def init_pdf(font_reg, font_bold, font_italic):
@@ -116,13 +117,15 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.draw_form_box(105, y_start, 95, 10, "PESEL", formatted_pesel, is_bold=True)
     
     pdf.set_y(y_start + 12)
-    adres = pacjent.get('Adres', '......................................................................................')
+    # BEZPIECZNE KROPKI DLA ADRESU
+    adres = pacjent.get('Adres', '')
+    if not adres: adres = ". " * 45 
     pdf.draw_form_box(10, pdf.get_y(), 140, 10, "Adres zamieszkania", adres)
-    pdf.draw_form_box(150, pdf.get_y()-10, 50, 10, "Kod pocztowy / Miejscowość", "...... - ......   ......................")
+    pdf.draw_form_box(150, pdf.get_y()-10, 50, 10, "Kod pocztowy / Miejscowość", "..... - .....   . . . . . . . . . . .")
     
     pdf.set_y(pdf.get_y() + 12)
-    pdf.draw_form_box(10, pdf.get_y(), 140, 10, "Zawód wyuczony / wykonywany", ".......................................................................")
-    pdf.draw_form_box(150, pdf.get_y()-10, 50, 10, "Płeć (K / M)", "......................")
+    pdf.draw_form_box(10, pdf.get_y(), 140, 10, "Zawód wyuczony / wykonywany", ". " * 35)
+    pdf.draw_form_box(150, pdf.get_y()-10, 50, 10, "Płeć (K / M)", ". " * 10)
     
     pdf.ln(13)
     
@@ -131,7 +134,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     
     y_start2 = pdf.get_y()
     pdf.draw_form_box(10, y_start2, 140, 10, "Nazwa", firma.get('NazwaFirmy', ''))
-    pdf.draw_form_box(150, y_start2, 50, 10, "Kod pocztowy", "......... - .........")
+    pdf.draw_form_box(150, y_start2, 50, 10, "Kod pocztowy", "..... - .....")
     
     pdf.set_y(y_start2 + 12)
     pdf.draw_form_box(10, pdf.get_y(), 190, 10, "Adres", firma.get('Adres', ''))
@@ -146,7 +149,6 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.set_y(pdf.get_y() + 12)
     pdf.set_font("Roboto", size=8)
     
-    # Bezpieczne łamanie wyrazów i skreślania
     pdf.cell(pdf.get_string_width("Skierowanie od pracodawcy / placówki dydaktycznej:   "), 5, "Skierowanie od pracodawcy / placówki dydaktycznej:   ")
     pdf.print_options(["TAK", "NIE"], 0, 5, spacer=" / ")
     pdf.set_x(150)
@@ -212,8 +214,9 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.cell(0, 6, "Badanie Podmiotowe:", ln=1)
     
     pdf.set_font("Roboto", size=8)
-    pdf.cell(0, 5, "Skargi badanego (ej): ....................................................................................................................................", ln=1)
-    pdf.cell(0, 5, "..........................................................................................................................................................", ln=1)
+    # BEZPIECZNE KROPKI
+    pdf.cell(0, 5, "Skargi badanego (ej): " + ". " * 60, ln=1)
+    pdf.cell(0, 5, ". " * 75, ln=1)
     
     pdf.ln(3)
     
@@ -250,7 +253,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
         pdf.cell(80, 5, "", border=1, ln=1)
         
     pdf.cell(90, 5, "U kobiet: Data ostatniej miesiączki: ........................", border=1)
-    pdf.cell(100, 5, " cyklu: Tak / Nie; porody: .........; poronienia: .........; leki hormonalne: .........", border=1, ln=1)
+    pdf.cell(100, 5, " cyklu: Tak / Nie; porody: .......; poronienia: .......; leki hormonalne: .......", border=1, ln=1)
     
     pdf.cell(90, 5, "Inne problemy zdrowotne", border=1)
     pdf.cell(10, 5, "", border=1)
@@ -264,7 +267,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     
     pdf.set_font("Roboto", size=8)
     pdf.cell(0, 5, "Wywiad rodzinny: alergie, astma, cukrzyca, chor.psychiczne, choroby serca, nadciśnienie tętnicze, nowotwory, inne:", ln=1)
-    pdf.cell(0, 5, "..........................................................................................................................................................", ln=1)
+    pdf.cell(0, 5, ". " * 75, ln=1)
     
     pdf.ln(2)
     pdf.cell(0, 5, "Subiektywna ocena stanu zdrowia:", ln=1)
@@ -273,15 +276,15 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.cell(0, 5, "    opis uwagi: .......................................", ln=1)
     
     pdf.ln(2)
-    pdf.cell(0, 5, "Czy badany(a) przebył(a) zabieg / i operacyjny/e? Jakie? Kiedy? ....................................................", ln=1)
-    pdf.cell(0, 5, "Czy jest pod opieką poradni specjalistycznej? Jakiej? ..............................................................", ln=1)
-    pdf.cell(0, 5, "Czy badany(a) przyjmuje leki? Jakie? ...............................................................................", ln=1)
+    pdf.cell(0, 5, "Czy badany(a) przebył(a) zabieg / i operacyjny/e? Jakie? Kiedy? " + ". " * 20, ln=1)
+    pdf.cell(0, 5, "Czy jest pod opieką poradni specjalistycznej? Jakiej? " + ". " * 25, ln=1)
+    pdf.cell(0, 5, "Czy badany(a) przyjmuje leki? Jakie? " + ". " * 30, ln=1)
     
     pdf.ln(5)
     pdf.set_font("Roboto", style="I", size=8)
     pdf.cell(0, 4, "Oświadczam, że zrozumiałem(am) treść zadawanych pytań i odpowiedziałem(am) zgodnie z prawdą.", ln=1)
     pdf.ln(6)
-    pdf.cell(0, 4, "....................................................................", ln=1, align="R")
+    pdf.cell(0, 4, ". " * 30, ln=1, align="R")
     pdf.cell(0, 3, "(podpis badanego)", ln=1, align="R")
     
     pdf.ln(4)
@@ -291,9 +294,9 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     
     pdf.set_font("Roboto", size=8)
     pdf.cell(0, 5, "Wzrost ........ cm    Masa ciała ........ kg    Tętno ...... / min.    RR ...... / ...... mmHg", ln=1)
-    pdf.cell(0, 5, "Wzrok: VIS: OP: .................... C.C: ....................  OL: .................... C.C: ....................", ln=1)
+    pdf.cell(0, 5, "Wzrok: VIS: OP: ............ C.C: ............  OL: ............ C.C: ...........", ln=1)
     pdf.cell(0, 5, "rozpoznawanie barw: .................. zez: TAK / NIE     słuch: szept UP .......... m, UL .......... m", ln=1)
-    pdf.cell(0, 5, "Orientacyjne pole widzenia: .............................. Układ równowagi: Romberg: ..............................", ln=1)
+    pdf.cell(0, 5, "Orientacyjne pole widzenia: .................... Układ równowagi: Romberg: ....................", ln=1)
     pdf.cell(0, 5, "Oczopląs obecny / nieobecny", ln=1)
     
     pdf.ln(3)
@@ -361,23 +364,23 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.set_font("Roboto", size=8)
     pdf.cell(pdf.get_string_width("Zakres badań poszerzony poza wskazówki metodyczne:   "), 5, "Zakres badań poszerzony poza wskazówki metodyczne:   ")
     pdf.print_options(["NIE", "TAK"], 0, 5, " / ")
-    pdf.cell(0, 5, "   Uzasadnienie: ........................................", ln=1)
+    pdf.cell(0, 5, "   Uzasadnienie: " + ". "*20, ln=1)
     
     pdf.cell(pdf.get_string_width("Zmiana częstotliwości wykonywania badań okresowych:   "), 5, "Zmiana częstotliwości wykonywania badań okresowych:   ")
     pdf.print_options(["NIE", "TAK"], 0, 5, " / ")
-    pdf.cell(0, 5, "   Uzasadnienie: ........................................", ln=1)
+    pdf.cell(0, 5, "   Uzasadnienie: " + ". "*20, ln=1)
     
     pdf.ln(3)
-    pdf.cell(0, 5, "Rozpoznanie: ..........................................................................................................", ln=1)
-    pdf.cell(0, 5, "Dane adresowe jednostki podstawowej opieki zdrowotnej: ................................................................", ln=1)
-    pdf.cell(0, 5, "Informacje dla lekarza rodzinnego: ....................................................................................", ln=1)
-    pdf.cell(0, 5, "Zalecenia: ............................................................................................................", ln=1)
+    pdf.cell(0, 5, "Rozpoznanie: " + ". " * 45, ln=1)
+    pdf.cell(0, 5, "Dane adresowe jednostki podstawowej opieki zdrowotnej: " + ". " * 30, ln=1)
+    pdf.cell(0, 5, "Informacje dla lekarza rodzinnego: " + ". " * 40, ln=1)
+    pdf.cell(0, 5, "Zalecenia: " + ". " * 45, ln=1)
     
     pdf.ln(5)
     pdf.set_font("Roboto", style="I", size=8)
     pdf.cell(0, 4, "Oświadczam, że zrozumiałe(am) treść zaleceń i konsekwencji zdrowotnych wynikających z niedostosowania się do nich:", ln=1)
     pdf.ln(6)
-    pdf.cell(0, 4, "....................................................................", ln=1, align="R")
+    pdf.cell(0, 4, ". " * 30, ln=1, align="R")
     pdf.cell(0, 3, "Podpis pacjenta:", ln=1, align="R")
     
     pdf.ln(5)
@@ -423,7 +426,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     
     pdf.ln(3)
     uwagi = str(orz_data.get('UwagiLekarza', ''))
-    if not uwagi: uwagi = "...................................................................................................."
+    if not uwagi: uwagi = ". " * 40
     pdf.set_font("Roboto", style="B", size=8)
     pdf.cell(15, 5, "UWAGI: ")
     pdf.set_font("Roboto", size=8)
@@ -434,7 +437,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     data_kolejnego = orz_data.get('DataKolejnegoBadania', '........................')
     pdf.cell(0, 5, f"Data wydania orzeczenia: {data_wystawienia}", ln=1)
     pdf.cell(0, 5, f"Data następnego badania: {data_kolejnego}", ln=1)
-    pdf.cell(0, 5, "Badany(a) / podmiot kierujący na badanie odwołuje się do treści orzeczenia lekarskiego do ........................................... w dniu .................", ln=1)
+    pdf.cell(0, 5, "Badany(a) / podmiot kierujący na badanie odwołuje się do treści orzeczenia lekarskiego do .................................... w dniu ............ ", ln=1)
     
     pdf.ln(5)
     y_signatures = pdf.get_y()
