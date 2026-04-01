@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 from db_service import get_data_as_df, apply_pro_style
 
 # --- 1. KONFIGURACJA ---
@@ -37,13 +38,13 @@ def render_premium_card(title, value, icon, badge_text, badge_color, badge_bg):
 def render_activity_table(df):
     """Renderuje tabelę aktywności - wersja 'Bulletproof'."""
     if df is None or df.empty:
-        st.markdown("<p style='color: #64748b; padding: 20px;'>Brak danych o wizytach.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='color: #64748b; padding: 20px;'>Brak nadchodzących wizyt.</p>", unsafe_allow_html=True)
         return
 
     # Nagłówek tabeli
     html = '<div class="custom-table-container"><table style="width: 100%; border-collapse: collapse; background: white;">'
     html += '<thead><tr style="background: #f8fafc; border-bottom: 1px solid #e2e8f0;">'
-    html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Badanie / Pacjent</th>'
+    html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Badanie / Status</th>'
     html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Termin</th>'
     html += '<th style="padding: 18px; text-align: left; color: #64748b; font-size: 0.7rem; text-transform: uppercase;">Status</th>'
     html += '</tr></thead><tbody>'
@@ -59,15 +60,15 @@ def render_activity_table(df):
         litera = typ[0] if typ else "?"
         
         row_html = f"""
-        <tr class="table-row" style="border-bottom: 1px solid #f1f5f9;">
+        <tr class="table-row" style="border-bottom: 1px solid #f1f5f9; {'opacity: 0.6;' if is_done else ''}">
             <td style="padding: 16px; display: flex; align-items: center; gap: 12px;">
                 <div style="width: 38px; height: 38px; background: {icon_bg}; color: {icon_color}; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem;">{litera}</div>
                 <div>
                     <div style="color: #0f172a; font-weight: 600; font-size: 0.9rem;">{typ}</div>
-                    <div style="color: #94a3b8; font-size: 0.72rem;">Zarejestrowano</div>
+                    <div style="color: #94a3b8; font-size: 0.72rem;">ID: {str(row.get('ID_Wizyty', '---'))[-6:]}</div>
                 </div>
             </td>
-            <td style="padding: 16px; color: #475569; font-size: 0.85rem; font-weight: 500;">{row['DataWizyty']}</td>
+            <td style="padding: 16px; color: #475569; font-size: 0.85rem; font-weight: 600;">{row['DataWizyty']}</td>
             <td style="padding: 16px;">
                 <span style="background: {bg}; color: {txt}; padding: 5px 14px; border-radius: 8px; font-size: 0.72rem; font-weight: 700; display: inline-block;">{status}</span>
             </td>
@@ -78,7 +79,7 @@ def render_activity_table(df):
     html += '</tbody></table></div>'
     st.write(html, unsafe_allow_html=True)
 
-# --- 3. LOGIKA POBIERANIA DANYCH ---
+# --- 3. LOGIKA POBIERANIA DANYCH I INTELIGENTNE FILTROWANIE ---
 try:
     df_wizyty = get_data_as_df("Wizyty")
     df_pacjenci = get_data_as_df("Pacjenci")
@@ -86,6 +87,30 @@ try:
 except:
     df_wizyty = pd.DataFrame(columns=['DataWizyty', 'TypBadania', 'Status'])
     df_pacjenci = df_firmy = pd.DataFrame()
+
+# Ustalenie dzisiejszej daty z uwzględnieniem strefy czasowej w chmurze
+dzis = pd.Timestamp.today(tz='Europe/Warsaw').date()
+wiz_dzis = 0
+df_do_tabeli = pd.DataFrame()
+
+if not df_wizyty.empty:
+    # Bezpieczna konwersja dat wizyt do formatu pozwalającego na matematykę (porównania)
+    df_wizyty['DataWizyty_dt'] = pd.to_datetime(df_wizyty['DataWizyty'], errors='coerce').dt.date
+
+    # KPI: Obliczamy ile wizyt jest zaplanowanych na dzisiaj (wszystkie statusy)
+    wiz_dzis = len(df_wizyty[df_wizyty['DataWizyty_dt'] == dzis])
+
+    # FILTROWANIE OPERACYJNE (Inteligentny Radar)
+    # Warunek 1: Pokaż Zaplanowane na dzisiaj i w przyszłości
+    mask_zaplanowane = (df_wizyty['Status'] == 'Zaplanowana') & (df_wizyty['DataWizyty_dt'] >= dzis)
+    # Warunek 2: Pokaż Zakończone, ale TYLKO z dzisiaj
+    mask_zakonczone_dzis = (df_wizyty['Status'] == 'Zakończona') & (df_wizyty['DataWizyty_dt'] == dzis)
+
+    df_do_tabeli = df_wizyty[mask_zaplanowane | mask_zakonczone_dzis].copy()
+
+    if not df_do_tabeli.empty:
+        # Sortowanie: najpierw data, potem status odwrotnie alfabetycznie (Z-aplanowana wyżej niż Z-akończona)
+        df_do_tabeli = df_do_tabeli.sort_values(by=['DataWizyty_dt', 'Status'], ascending=[True, False]).head(8)
 
 # --- 4. WIDOK GŁÓWNY ---
 
@@ -104,9 +129,6 @@ with c1:
 with c2:
     render_premium_card("Firmy", str(len(df_firmy)), "🏢", "Kontrakty", "#2563eb", "#dbeafe")
 with c3:
-    # Wykorzystuje zsynchronizowany czas polski z db_service
-    dzis = str(pd.Timestamp.today().date())
-    wiz_dzis = len(df_wizyty[df_wizyty['DataWizyty'].astype(str) == dzis]) if not df_wizyty.empty else 0
     render_premium_card("Wizyty na dziś", str(wiz_dzis), "📅", "Dzisiaj", "#ea580c", "#ffedd5")
 
 st.markdown("<br>", unsafe_allow_html=True)
@@ -115,11 +137,11 @@ st.markdown("<br>", unsafe_allow_html=True)
 col_l, col_r = st.columns([2.2, 1])
 
 with col_l:
-    st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Ostatnie aktywności</h4>", unsafe_allow_html=True)
-    if not df_wizyty.empty:
-        render_activity_table(df_wizyty.tail(6).iloc[::-1])
+    st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Wizyty operacyjne (od dziś)</h4>", unsafe_allow_html=True)
+    if not df_do_tabeli.empty:
+        render_activity_table(df_do_tabeli)
     else:
-        st.info("Brak aktywności.")
+        st.info("Brak aktywnych wizyt na dziś i nadchodzące dni. Mamy wolne!")
 
 with col_r:
     st.markdown("<h4 style='font-weight: 700; color: #1e293b; margin-bottom: 1.2rem;'>Szybkie akcje</h4>", unsafe_allow_html=True)
