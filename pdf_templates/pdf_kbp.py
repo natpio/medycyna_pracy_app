@@ -3,19 +3,6 @@ import datetime
 from fpdf import FPDF
 
 class KartaBadaniaPDF(FPDF):
-    def safe_multi_cell(self, w, h, text, **kwargs):
-        """Uodpornienie na błędy FPDF2: rozbija ekstremalnie długie słowa bez spacji"""
-        safe_text = str(text) if text else ""
-        words = safe_text.split(" ")
-        safe_words = []
-        for word in words:
-            if len(word) > 25:
-                # Wstawia sztuczną spację co 25 znaków do dziwnych ciągów
-                safe_words.append(" ".join(word[i:i+25] for i in range(0, len(word), 25)))
-            else:
-                safe_words.append(word)
-        self.multi_cell(w, h, " ".join(safe_words), **kwargs)
-
     def strike_text(self, text, h=4):
         x, y = self.get_x(), self.get_y()
         w = self.get_string_width(text)
@@ -49,12 +36,47 @@ class KartaBadaniaPDF(FPDF):
             curr_y += line_h
 
     def draw_form_box(self, x, y, w, h, label, value, is_bold=False):
+        """KULOODPORNY RYSOWNIK TABEL: Sam łamie tekst, omijając błędy biblioteki FPDF2"""
+        self.rect(x, y, w, h)
         self.set_xy(x, y)
         self.set_font("Roboto", size=6)
-        self.cell(w, 3, label, ln=1)
-        self.set_xy(x, y + 3)
+        self.cell(w, 3, label)
+        
+        if not value:
+            self.set_xy(10, y + h)
+            return
+            
         self.set_font("Roboto", style="B" if is_bold else "", size=9)
-        self.safe_multi_cell(w, h - 3, value, border=1, align='L')
+        safe_value = str(value).replace("\r", "").replace("\n", " ")
+        words = safe_value.split(" ")
+        
+        line = ""
+        line_y = y + 3.5
+        line_h = 3.5
+        
+        for word in words:
+            # Awaryjne łamanie nienormalnie długich ciągów bez spacji z bazy danych
+            while self.get_string_width(word) > w - 2:
+                cut_idx = int(len(word) / 2)
+                words.insert(words.index(word)+1, word[cut_idx:])
+                word = word[:cut_idx] + "-"
+
+            if self.get_string_width(line + word + " ") < w - 2:
+                line += word + " "
+            else:
+                self.set_xy(x + 1, line_y)
+                self.cell(w - 2, line_h, line)
+                line = word + " "
+                line_y += line_h
+                
+                if line_y > y + h - line_h:
+                    break 
+                    
+        if line and line_y <= y + h - line_h:
+            self.set_xy(x + 1, line_y)
+            self.cell(w - 2, line_h, line)
+            
+        self.set_xy(10, y + h)
 
 def init_pdf(font_reg, font_bold, font_italic):
     pdf = KartaBadaniaPDF()
@@ -77,11 +99,15 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.set_font("Roboto", size=8)
     pdf.rect(10, 10, 40, 18)
     pdf.set_xy(10, 16)
-    pdf.safe_multi_cell(40, 4, "Pieczęć zakładu\nopieki zdrowotnej", align="C")
+    pdf.cell(40, 4, "Pieczęć zakładu", align="C", ln=1)
+    pdf.set_x(10)
+    pdf.cell(40, 4, "opieki zdrowotnej", align="C", ln=1)
     
     pdf.set_font("Roboto", style="B", size=14)
     pdf.set_xy(60, 12)
-    pdf.cell(130, 6, f"{pacjent.get('Nazwisko', '').upper()} {pacjent.get('Imie', '').upper()}", align="C", ln=1)
+    full_name = f"{pacjent.get('Nazwisko', '').upper()} {pacjent.get('Imie', '').upper()}"
+    if pdf.get_string_width(full_name) > 125: full_name = full_name[:40] + "..."
+    pdf.cell(130, 6, full_name, align="C", ln=1)
     
     pdf.set_font("Roboto", style="B", size=16)
     pdf.set_xy(60, 20)
@@ -94,6 +120,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     
     pdf.ln(5)
     
+    # Metryczka ze skreśleniami
     pdf.set_font("Roboto", size=7)
     pdf.cell(50, 6, "Rodzaj badania profilaktycznego", border=1)
     x_start, y_start = pdf.get_x(), pdf.get_y()
@@ -418,7 +445,7 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     
     pdf.ln(5)
     
-    # 5. DECYZJA ORZECZNICZA - SKREŚLANIE AKAPITÓW
+    # 5. DECYZJA ORZECZNICZA - KULOODPORNE SKREŚLANIE BEZ MULTI_CELL
     pdf.set_font("Roboto", style="B", size=9)
     pdf.cell(0, 5, "Wydano orzeczenie o:", ln=1)
     
@@ -427,31 +454,28 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     jest_zdolny = "NIEZDOLNY" not in decyzja_z_bazy
     
     y_start = pdf.get_y()
-    pdf.safe_multi_cell(0, 4, "- brak przeciwwskazań zdrowotnych do pracy na stanowisku")
+    pdf.cell(0, 4, "- brak przeciwwskazań zdrowotnych do pracy na stanowisku", ln=1)
     if not jest_zdolny: pdf.strike_block(y_start, pdf.get_y(), 4)
     
     y_start = pdf.get_y()
-    pdf.safe_multi_cell(0, 4, "- braku przeciwwskazań zdrowotnych do podjęcia lub kontynuowania nauki, studiów lub studiów doktoranckich")
+    pdf.cell(0, 4, "- braku przeciwwskazań zdrowotnych do podjęcia lub kontynuowania nauki, studiów lub studiów doktoranckich", ln=1)
     if not jest_zdolny: pdf.strike_block(y_start, pdf.get_y(), 4)
     
     y_start = pdf.get_y()
-    pdf.safe_multi_cell(0, 4, "- przeciwwskazaniach zdrowotnych do pracy na stanowisku")
+    pdf.cell(0, 4, "- przeciwwskazaniach zdrowotnych do pracy na stanowisku", ln=1)
     if jest_zdolny: pdf.strike_block(y_start, pdf.get_y(), 4)
     
     y_start = pdf.get_y()
-    txt_rest = (
-        "- przeciwwskazaniach zdrowotnych do podjęcia lub kontynuowania nauki, studiów lub studiów doktoranckich\n"
-        "- utracie zdolność do wykonywania dotychczasowej pracy\n"
-        "- przeciwwskazaniach zdrowotnych do wykonywania dotychczasowej pracy przez pracownicę w ciąży lub karmiącą dziecko piersią uzasadniających:\n"
-        "       a) przeniesienie pracownicy do innej pracy, a jeżeli jest to niemożliwe, zwolnienie jej na czas niezbędny z obowiązku świadczenia pracy\n"
-        "       b) zmianę warunków pracy na dotychczas zajmowanym stanowisku pracy lub skróceniu czasu pracy lub przeniesienia pracownicy do innej pracy...\n"
-        "- niezdolności badanego (ej) do wykonywania dotychczasowej pracy i konieczności przeniesienia na inne stanowisko ze względu na:\n"
-        "       * szkodliwy wpływ wykonywanej pracy na zdrowie; zagrożenie, jakie stwarza wykonywana praca dla zdrowia młodocianego;\n"
-        "       * podejrzenie powstania choroby zawodowej; niezdolność ze względu na chorobę zawodową lub skutki wypadku przy pracy;\n"
-        "- potrzebie stosowania okularów korygujących wzrok podczas pracy przy obsłudze monitora ekranowego\n"
-        "- inne"
-    )
-    pdf.safe_multi_cell(0, 4, txt_rest)
+    pdf.cell(0, 4, "- przeciwwskazaniach zdrowotnych do podjęcia lub kontynuowania nauki, studiów lub studiów doktoranckich", ln=1)
+    pdf.cell(0, 4, "- utracie zdolność do wykonywania dotychczasowej pracy", ln=1)
+    pdf.cell(0, 4, "- przeciwwskazaniach zdrowotnych do wykonywania dotychczasowej pracy przez pracownicę w ciąży lub karmiącą dziecko piersią uzasadniających:", ln=1)
+    pdf.cell(0, 4, "       a) przeniesienie pracownicy do innej pracy, a jeżeli jest to niemożliwe, zwolnienie jej na czas niezbędny z obowiązku świadczenia pracy", ln=1)
+    pdf.cell(0, 4, "       b) zmianę warunków pracy na dotychczas zajmowanym stanowisku pracy lub skróceniu czasu pracy lub przeniesienia pracownicy do innej pracy...", ln=1)
+    pdf.cell(0, 4, "- niezdolności badanego (ej) do wykonywania dotychczasowej pracy i konieczności przeniesienia na inne stanowisko ze względu na:", ln=1)
+    pdf.cell(0, 4, "       * szkodliwy wpływ wykonywanej pracy na zdrowie; zagrożenie, jakie stwarza wykonywana praca dla zdrowia młodocianego;", ln=1)
+    pdf.cell(0, 4, "       * podejrzenie powstania choroby zawodowej; niezdolność ze względu na chorobę zawodową lub skutki wypadku przy pracy;", ln=1)
+    pdf.cell(0, 4, "- potrzebie stosowania okularów korygujących wzrok podczas pracy przy obsłudze monitora ekranowego", ln=1)
+    pdf.cell(0, 4, "- inne", ln=1)
     pdf.strike_block(y_start, pdf.get_y(), 4)
     
     pdf.ln(3)
@@ -459,8 +483,21 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     pdf.set_font("Roboto", style="B", size=8)
     pdf.cell(15, 5, "UWAGI: ")
     pdf.set_font("Roboto", size=8)
+    
+    # Ręczne łamanie uwag (100% safety)
     if uwagi:
-        pdf.safe_multi_cell(0, 5, uwagi)
+        safe_uwagi = uwagi.replace('\r', '').replace('\n', ' ')
+        words = safe_uwagi.split(" ")
+        line = ""
+        for word in words:
+            if pdf.get_string_width(line + word + " ") < 170:
+                line += word + " "
+            else:
+                pdf.cell(0, 5, line, ln=1)
+                pdf.set_x(25)
+                line = word + " "
+        if line:
+            pdf.cell(0, 5, line, ln=1)
     else:
         pdf.cell(0, 5, "", border="B", ln=1)
     
@@ -486,7 +523,16 @@ def create_kbp_pdf(orz_data, wizyta, pacjent, firma, signature_path, fonts):
     else:
         pdf.set_xy(120, y_signatures)
         pdf.set_font("Roboto", style="B", size=8)
-        pdf.safe_multi_cell(70, 4, "Badanie profilaktyczne przeprowadził:\nJarosław Tarkowski\nspecjalista medycyny pracy\n30/1JT/370\n8776405", align="C")
+        pdf.cell(70, 4, "Badanie profilaktyczne przeprowadził:", align="C", ln=1)
+        pdf.set_x(120)
+        pdf.cell(70, 4, "Jarosław Tarkowski", align="C", ln=1)
+        pdf.set_x(120)
+        pdf.cell(70, 4, "specjalista medycyny pracy", align="C", ln=1)
+        pdf.set_x(120)
+        pdf.cell(70, 4, "30/1JT/370", align="C", ln=1)
+        pdf.set_x(120)
+        pdf.cell(70, 4, "8776405", align="C", ln=1)
+        
         pdf.set_font("Roboto", size=6)
         pdf.set_xy(120, pdf.get_y() + 5)
         pdf.cell(70, 4, "Pieczęć i podpis lekarza :", align="C")
