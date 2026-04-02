@@ -5,6 +5,8 @@ import calendar
 import pyotp
 import uuid
 import time
+import os
+import base64
 import extra_streamlit_components as esc
 from db_service import (
     get_data_as_df, apply_pro_style, add_note_to_db, 
@@ -27,26 +29,40 @@ cookie_manager = esc.CookieManager()
 
 # --- SYSTEM LOGOWANIA I WERYFIKACJI URZĄDZENIA ---
 def render_login_screen():
-    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    # CAŁKOWITE UKRYCIE PASKA BOCZNEGO (SIDEBAR) TYLKO DLA EKRANU LOGOWANIA
+    st.markdown("""
+        <style>
+            [data-testid="stSidebar"] { display: none !important; }
+            [data-testid="collapsedControl"] { display: none !important; }
+        </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<br><br>", unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 1.2, 1])
     
     with col2:
-        st.markdown("""
-            <div style='text-align: center; margin-bottom: 20px;'>
-                <h1 style='font-weight: 800; color: #1e3a8a; margin-bottom: 0;'>System Zabezpieczony</h1>
-                <p style='color: #64748b; font-size: 0.9rem;'>Zaloguj się przy użyciu Google Authenticator</p>
-            </div>
-        """, unsafe_allow_html=True)
+        # Wczytanie i wyśrodkowanie Logo Jarka
+        logo_path = "logo_jarek2.png"
+        if os.path.exists(logo_path):
+            with open(logo_path, "rb") as image_file:
+                encoded_logo = base64.b64encode(image_file.read()).decode()
+            st.markdown(f"""
+                <div style='text-align: center; margin-bottom: 40px;'>
+                    <img src="data:image/png;base64,{encoded_logo}" style="max-width: 250px; width: 100%; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.05));">
+                </div>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("<h2 style='text-align:center; color:#1e3a8a;'>Medycyna Pracy</h2>", unsafe_allow_html=True)
         
         with st.container(border=True):
             with st.form("login_form"):
-                st.markdown("<div style='text-align: center; font-size: 3rem; margin-bottom: 10px;'>🔒</div>", unsafe_allow_html=True)
+                st.markdown("<p style='text-align: center; color: #64748b; font-size: 0.85rem; margin-bottom: 15px; font-weight: 600;'>Autoryzacja dostępu</p>", unsafe_allow_html=True)
                 
-                kod_2fa = st.text_input("Wprowadź 6-cyfrowy kod z aplikacji:", max_chars=6)
-                zapamietaj = st.checkbox("Zapamiętaj to urządzenie przez 30 dni", value=True)
+                kod_2fa = st.text_input("Hasło / Kod:", type="password", max_chars=6, label_visibility="collapsed", placeholder="••••••")
+                zapamietaj = st.checkbox("Zapamiętaj to urządzenie (30 dni)", value=True)
                 
                 st.markdown("<br>", unsafe_allow_html=True)
-                zaloguj = st.form_submit_button("Odblokuj system", type="primary", use_container_width=True)
+                zaloguj = st.form_submit_button("Zaloguj", type="primary", use_container_width=True)
                 
                 if zaloguj:
                     try:
@@ -54,7 +70,6 @@ def render_login_screen():
                         totp = pyotp.TOTP(secret)
                         
                         if totp.verify(kod_2fa):
-                            st.success("✅ Autoryzacja pomyślna! Odblokowywanie...")
                             if zapamietaj:
                                 new_token = str(uuid.uuid4())
                                 add_trusted_device(new_token)
@@ -62,12 +77,11 @@ def render_login_screen():
                             else:
                                 st.session_state['temp_logged_in'] = True
                                 
-                            time.sleep(1.5)
                             st.rerun()
                         else:
-                            st.error("❌ Nieprawidłowy kod. Spróbuj ponownie.")
+                            st.error("❌ Nieprawidłowe hasło. Spróbuj ponownie.")
                     except KeyError:
-                        st.error("⚠️ Błąd krytyczny: Brak klucza 'totp_secret' w pliku konfiguracji (Secrets)!")
+                        st.error("⚠️ Błąd krytyczny: Brak klucza w pliku konfiguracji (Secrets)!")
 
 # SPRAWDZENIE STATUSU ZALOGOWANIA
 zalogowany = False
