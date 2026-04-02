@@ -2,7 +2,14 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, date, timedelta
 import calendar
-from db_service import get_data_as_df, apply_pro_style, add_note_to_db
+import pyotp
+import uuid
+import time
+import extra_streamlit_components as esc
+from db_service import (
+    get_data_as_df, apply_pro_style, add_note_to_db, 
+    check_trusted_device, add_trusted_device
+)
 
 # --- 1. KONFIGURACJA ---
 st.set_page_config(
@@ -14,6 +21,69 @@ st.set_page_config(
 
 # Wstrzyknięcie stylów CSS oraz automatyczne ładowanie Logo i Stopki VORTEZA
 apply_pro_style()
+
+# --- INICJALIZACJA COOKIE MANAGERA ---
+cookie_manager = esc.CookieManager()
+
+# --- SYSTEM LOGOWANIA I WERYFIKACJI URZĄDZENIA ---
+def render_login_screen():
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 1.2, 1])
+    
+    with col2:
+        st.markdown("""
+            <div style='text-align: center; margin-bottom: 20px;'>
+                <h1 style='font-weight: 800; color: #1e3a8a; margin-bottom: 0;'>System Zabezpieczony</h1>
+                <p style='color: #64748b; font-size: 0.9rem;'>Zaloguj się przy użyciu Google Authenticator</p>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        with st.container(border=True):
+            with st.form("login_form"):
+                st.markdown("<div style='text-align: center; font-size: 3rem; margin-bottom: 10px;'>🔒</div>", unsafe_allow_html=True)
+                
+                kod_2fa = st.text_input("Wprowadź 6-cyfrowy kod z aplikacji:", max_chars=6)
+                zapamietaj = st.checkbox("Zapamiętaj to urządzenie przez 30 dni", value=True)
+                
+                st.markdown("<br>", unsafe_allow_html=True)
+                zaloguj = st.form_submit_button("Odblokuj system", type="primary", use_container_width=True)
+                
+                if zaloguj:
+                    try:
+                        secret = st.secrets["doctor"]["totp_secret"]
+                        totp = pyotp.TOTP(secret)
+                        
+                        if totp.verify(kod_2fa):
+                            st.success("✅ Autoryzacja pomyślna! Odblokowywanie...")
+                            if zapamietaj:
+                                new_token = str(uuid.uuid4())
+                                add_trusted_device(new_token)
+                                cookie_manager.set("vorteza_auth_token", new_token, expires_at=datetime.now() + timedelta(days=30))
+                            else:
+                                st.session_state['temp_logged_in'] = True
+                                
+                            time.sleep(1.5)
+                            st.rerun()
+                        else:
+                            st.error("❌ Nieprawidłowy kod. Spróbuj ponownie.")
+                    except KeyError:
+                        st.error("⚠️ Błąd krytyczny: Brak klucza 'totp_secret' w pliku konfiguracji (Secrets)!")
+
+# SPRAWDZENIE STATUSU ZALOGOWANIA
+zalogowany = False
+if st.session_state.get('temp_logged_in', False):
+    zalogowany = True
+else:
+    # Weryfikacja ciasteczka w bazie
+    token = cookie_manager.get("vorteza_auth_token")
+    if token and check_trusted_device(token):
+        zalogowany = True
+
+if not zalogowany:
+    # Użytkownik NIE zautoryzowany -> Pokaż ekran logowania i zatrzymaj renderowanie reszty
+    render_login_screen()
+    st.stop()
+
 
 # --- FUNKCJE POMOCNICZE DLA KALENDARZA ---
 
@@ -276,7 +346,7 @@ with col_side:
     st.markdown("""
         <div style="background: #eff6ff; padding: 20px; border-radius: 16px; border: 1px solid #dbeafe;">
             <p style="margin: 0; font-size: 0.82rem; color: #1e40af; line-height: 1.5;">
-                💡 <b>System zautoryzowany:</b><br>Zabezpieczone połączenie z bazą i modułem orzeczeń.
+                💡 <b>System zautoryzowany:</b><br>Ochrona Google Authenticator (TOTP) i Cookie.
             </p>
         </div>
     """, unsafe_allow_html=True)
