@@ -66,22 +66,28 @@ def render_login_screen():
                 
                 if zaloguj:
                     try:
-                        secret = st.secrets["doctor"]["totp_secret"]
+                        # Pobieramy klucz i usuwamy ewentualne białe znaki/spacje
+                        secret = st.secrets["doctor"]["totp_secret"].replace(" ", "").strip()
                         totp = pyotp.TOTP(secret)
                         
                         if totp.verify(kod_2fa):
+                            # NAJWAŻNIEJSZE: Wymuszamy natychmiastowe wpuszczenie do systemu
+                            st.session_state['temp_logged_in'] = True 
+                            
+                            st.success("✅ Autoryzacja pomyślna! Wczytywanie...")
+                            
                             if zapamietaj:
                                 new_token = str(uuid.uuid4())
                                 add_trusted_device(new_token)
                                 cookie_manager.set("vorteza_auth_token", new_token, expires_at=datetime.now() + timedelta(days=30))
-                            else:
-                                st.session_state['temp_logged_in'] = True
                                 
+                            # Dajemy przeglądarce czas na fizyczne pobranie i zapisanie ciasteczka
+                            time.sleep(1.5) 
                             st.rerun()
                         else:
-                            st.error("❌ Nieprawidłowe hasło. Spróbuj ponownie.")
+                            st.error("❌ Nieprawidłowy kod. Spróbuj ponownie.")
                     except KeyError:
-                        st.error("⚠️ Błąd krytyczny: Brak klucza w pliku konfiguracji (Secrets)!")
+                        st.error("⚠️ Błąd krytyczny: Brak klucza 'totp_secret' w pliku konfiguracji (Secrets)!")
 
 # SPRAWDZENIE STATUSU ZALOGOWANIA
 zalogowany = False
