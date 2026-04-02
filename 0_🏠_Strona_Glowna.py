@@ -291,8 +291,8 @@ if not df_wizyty.empty:
 
 st.markdown("""
     <div style="margin-bottom: 1.5rem;">
-        <h1 style="font-weight: 800; color: #0f172a; letter-spacing: -1.8px; margin-bottom: 4px; font-size: 2.8rem;">Dashboard</h1>
-        <p style="color: #64748b; font-size: 1.15rem; font-weight: 500;">Medycyna Pracy | Panel Zarządzania</p>
+        <h1 style="font-weight: 800; color: #0f172a; letter-spacing: -1.8px; margin-bottom: 4px; font-size: 2.8rem;">Rejestracja</h1>
+        <p style="color: #64748b; font-size: 1.15rem; font-weight: 500;">Medycyna Pracy</p>
     </div>
 """, unsafe_allow_html=True)
 
