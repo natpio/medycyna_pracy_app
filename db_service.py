@@ -1,11 +1,12 @@
 import streamlit as st
 import gspread
 import pandas as pd
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 import hashlib
 import os
 import base64
 import time
+import uuid
 
 # --- WYMUSZENIE POLSKIEJ STREFY CZASOWEJ W CHMURZE ---
 os.environ['TZ'] = 'Europe/Warsaw'
@@ -181,6 +182,33 @@ def dekoduj_pesel(pesel):
     except ValueError:
         return None, None
 
+# --- FUNKCJE AUTORYZACJI URZĄDZEŃ (NOWE) ---
+def check_trusted_device(token):
+    """Sprawdza, czy podany token urządzenia znajduje się w bazie zaufanych i czy nie wygasł."""
+    if not token: return False
+    df_auth = get_data_as_df("Autoryzacja")
+    if df_auth.empty: return False
+    
+    # Przeszukujemy bazę pod kątem tokena
+    is_valid = str(token) in df_auth['Token'].astype(str).values
+    return is_valid
+
+def add_trusted_device(token):
+    """Dodaje nowy token zaufanego urządzenia do bazy danych (ważny przez 30 dni)."""
+    sh = get_db_connection()
+    if not sh: return False
+    try:
+        ws = sh.worksheet("Autoryzacja")
+    except Exception:
+        st.error("Brak arkusza 'Autoryzacja' w Google Sheets!")
+        return False
+    
+    wygasa = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
+    ws.append_row([str(token), wygasa])
+    st.cache_data.clear()
+    return True
+
+
 @st.fragment(run_every="10s")
 def render_live_badge():
     df_wizyty = get_data_as_df("Wizyty")
@@ -206,14 +234,12 @@ def render_live_badge():
             st.markdown('<style>[data-testid="stSidebarNav"] span::after { content: none; }</style>', unsafe_allow_html=True)
 
 def apply_pro_style():
-    # 1. Logo w menu bocznym
     logo_file = "logo_jarek2.png"
     if os.path.exists(logo_file):
         with open(logo_file, "rb") as image_file:
             encoded_string = base64.b64encode(image_file.read()).decode()
         st.markdown(f"""<style>[data-testid="stSidebarNav"] {{ background-image: url(data:image/png;base64,{encoded_string}); background-repeat: no-repeat; background-position: center 20px; background-size: 80%; padding-top: 150px !important; }}</style>""", unsafe_allow_html=True)
     
-    # 2. Tło obrazkowe z ustawioną przezroczystością
     bg_file = "1775064952136.jpg"  
     if os.path.exists(bg_file):
         with open(bg_file, "rb") as bg_image:
@@ -237,16 +263,14 @@ def apply_pro_style():
             </style>
             """, unsafe_allow_html=True)
             
-    # 3. Ładowanie style.css
     css_file = "style.css"
     if os.path.exists(css_file):
         with open(css_file, 'r', encoding='utf-8') as f:
             css = f.read()
-        st.markdown(f'<style>\\n{css}\\n</style>', unsafe_allow_html=True)
+        st.markdown(f'<style>\n{css}\n</style>', unsafe_allow_html=True)
     
     render_live_badge()
 
-    # 4. Stopka VORTEZA
     creator_logo = "logo_firma.png" if os.path.exists("logo_firma.png") else ("logo_firma.jpg" if os.path.exists("logo_firma.jpg") else None)
     if creator_logo:
         mime = "image/png" if creator_logo.endswith(".png") else "image/jpeg"
