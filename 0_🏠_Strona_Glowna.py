@@ -98,6 +98,17 @@ if not zalogowany:
     render_login_screen()
     st.stop()
 
+# --- LOGIKA WYLOGOWANIA (WIDOCZNA TYLKO DLA ZALOGOWANYCH) ---
+st.sidebar.markdown("<br><br>", unsafe_allow_html=True)
+if st.sidebar.button("🚪 Wyloguj się", use_container_width=True):
+    # Kasowanie sesji
+    st.session_state['temp_logged_in'] = False
+    # Kasowanie ciasteczka w przeglądarce
+    cookie_manager.delete("vorteza_auth_token")
+    # Wymuszenie przeładowania po krótkim uśpieniu (aby przeglądarka zdążyła usunąć cookie)
+    time.sleep(0.5)
+    st.rerun()
+
 
 # --- FUNKCJE POMOCNICZE DLA KALENDARZA ---
 
@@ -291,8 +302,8 @@ if not df_wizyty.empty:
 
 st.markdown("""
     <div style="margin-bottom: 1.5rem;">
-        <h1 style="font-weight: 800; color: #0f172a; letter-spacing: -1.8px; margin-bottom: 4px; font-size: 2.8rem;">Rejestracja</h1>
-        <p style="color: #64748b; font-size: 1.15rem; font-weight: 500;">Medycyna Pracy</p>
+        <h1 style="font-weight: 800; color: #0f172a; letter-spacing: -1.8px; margin-bottom: 4px; font-size: 2.8rem;">Dashboard</h1>
+        <p style="color: #64748b; font-size: 1.15rem; font-weight: 500;">Medycyna Pracy | Panel Zarządzania</p>
     </div>
 """, unsafe_allow_html=True)
 
