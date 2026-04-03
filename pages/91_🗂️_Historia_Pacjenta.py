@@ -56,8 +56,12 @@ if wybrany_label != "--- Wybierz pacjenta ---":
             st.info("Brak zarejestrowanych wizyt dla tego pacjenta.")
         else:
             for _, wiz in wizyty_pacjenta.iterrows():
-                # Znalezienie nazwy firmy
-                nazwa_firmy = df_firmy[df_firmy['NIP'].astype(str) == str(wiz['NIP_Firmy'])]['NazwaFirmy'].iloc[0] if not df_firmy.empty else wiz['NIP_Firmy']
+                # Znalezienie nazwy firmy z zabezpieczeniem przed błędem IndexError
+                if not df_firmy.empty:
+                    firma_match = df_firmy[df_firmy['NIP'].astype(str) == str(wiz['NIP_Firmy'])]
+                    nazwa_firmy = firma_match['NazwaFirmy'].iloc[0] if not firma_match.empty else f"NIP: {wiz['NIP_Firmy']}"
+                else:
+                    nazwa_firmy = f"NIP: {wiz['NIP_Firmy']}"
                 
                 with st.expander(f"📅 {wiz['DataWizyty']} - {wiz['TypBadania']} ({nazwa_firmy})"):
                     col_a, col_b = st.columns(2)
