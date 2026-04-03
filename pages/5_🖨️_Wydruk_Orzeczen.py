@@ -78,22 +78,34 @@ font_regular, font_bold, font_italic = load_fonts()
 pieczatka_path = get_secure_signature()
 
 def generate_pdf_router(typ_dokumentu, orz_data, wizyta, pacjent, firma, pieczatka_path):
+    """Zwraca gotowe bajty pliku PDF w zależności od wybranego dokumentu."""
     fonts = (font_regular, font_bold, font_italic)
+    pdf = None
     
-    if typ_dokumentu == "Orzeczenie Lekarskie":
-        return create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
-    elif typ_dokumentu == "Karta Badania (KBP)":
-        return create_kbp_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
-    elif typ_dokumentu == "Orzeczenie Sanepid":
-        return create_sanepid_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
-    elif typ_dokumentu == "Oświadczenie Kierowcy":
-        return create_kierowca_wywiad_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
-    elif typ_dokumentu == "Zaświadczenie Uczeń/Student":
-        return create_uczen_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
-    elif typ_dokumentu == "Skierowanie WCMP":
-        return create_skierowanie_wcmp_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
-    else:
-        return b""
+    try:
+        if typ_dokumentu == "Orzeczenie Lekarskie":
+            pdf = create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
+        elif typ_dokumentu == "Karta Badania (KBP)":
+            pdf = create_kbp_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
+        elif typ_dokumentu == "Orzeczenie Sanepid":
+            pdf = create_sanepid_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
+        elif typ_dokumentu == "Oświadczenie Kierowcy":
+            # Fallback dla dokumentów, które mogą nie przyjmować wszystkich argumentów
+            try:
+                pdf = create_kierowca_wywiad_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
+            except TypeError:
+                pdf = create_kierowca_wywiad_pdf()
+        elif typ_dokumentu == "Zaświadczenie Uczeń/Student":
+            pdf = create_uczen_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
+        elif typ_dokumentu == "Skierowanie WCMP":
+            pdf = create_skierowanie_wcmp_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
+            
+        if pdf:
+            return pdf.output(dest='S').encode('latin-1')
+    except Exception as e:
+        st.error(f"Wystąpił problem w szablonie: {e}")
+        
+    return b""
 
 def render_orzeczenie_row(orz, pacjent, wizyta, firma, is_archived):
     orz_id = orz.get('ID_Orzeczenia', '')
@@ -103,7 +115,7 @@ def render_orzeczenie_row(orz, pacjent, wizyta, firma, is_archived):
     data_kolejnego = orz.get('DataKolejnegoBadania', '')
 
     with st.container(border=True):
-        # Sekcja górna: Informacje o pacjencie i decyzji
+        # Sekcja górna: Informacje
         col_info, col_status = st.columns([4, 1])
         with col_info:
             st.markdown(f"#### 📄 {pacjent.get('Imie', '')} {pacjent.get('Nazwisko', '')} - {typ_badania}")
@@ -119,15 +131,17 @@ def render_orzeczenie_row(orz, pacjent, wizyta, firma, is_archived):
              
         st.divider()
         
-        # Sekcja dolna: Wybór dokumentu i operacje
         col_sel, col_btn1, col_btn2, col_arch = st.columns([2.5, 1, 1.5, 1])
         
-        # Inteligentne pokazywanie dostępnych dokumentów na podstawie skierowania
-        dostepne_dokumenty = ["Orzeczenie Lekarskie", "Karta Badania (KBP)"]
-        if "Sanitarno" in str(typ_badania): dostepne_dokumenty.append("Orzeczenie Sanepid")
-        if "Kierowca" in str(typ_badania): dostepne_dokumenty.append("Oświadczenie Kierowcy")
-        if "Uczeń" in str(typ_badania) or "Student" in str(typ_badania): dostepne_dokumenty.append("Zaświadczenie Uczeń/Student")
-        if "Odwołanie" in str(typ_badania) or "WCMP" in str(typ_badania): dostepne_dokumenty.append("Skierowanie WCMP")
+        # ODKRYWAMY WSZYSTKIE DOKUMENTY (bez warunków)
+        dostepne_dokumenty = [
+            "Orzeczenie Lekarskie", 
+            "Karta Badania (KBP)", 
+            "Orzeczenie Sanepid", 
+            "Oświadczenie Kierowcy", 
+            "Zaświadczenie Uczeń/Student", 
+            "Skierowanie WCMP"
+        ]
             
         with col_sel:
             wybrany_dok = st.selectbox(
@@ -137,12 +151,8 @@ def render_orzeczenie_row(orz, pacjent, wizyta, firma, is_archived):
                 label_visibility="collapsed"
             )
             
-        # Generowanie wybranego pliku w locie
-        try:
-            pdf_bytes = generate_pdf_router(wybrany_dok, orz.to_dict(), wizyta.to_dict(), pacjent.to_dict(), firma.to_dict() if not firma.empty else {}, pieczatka_path)
-        except Exception as e:
-            pdf_bytes = b""
-            st.error(f"Błąd kompilacji PDF: {e}")
+        # Generowanie PDF w bajtach
+        pdf_bytes = generate_pdf_router(wybrany_dok, orz.to_dict(), wizyta.to_dict(), pacjent.to_dict(), firma.to_dict() if not firma.empty else {}, pieczatka_path)
 
         with col_btn1:
             st.download_button(
@@ -150,13 +160,13 @@ def render_orzeczenie_row(orz, pacjent, wizyta, firma, is_archived):
                 data=pdf_bytes,
                 file_name=f"{wybrany_dok.replace(' ', '_').replace('/', '_')}_{pacjent.get('Nazwisko', '')}.pdf",
                 mime="application/pdf",
-                key=f"dl_{orz_id}",
+                key=f"dl_{orz_id}_{wybrany_dok}", # Dynamiczny klucz, naprawia błąd pobierania tego samego pliku!
                 use_container_width=True,
                 disabled=(not pdf_bytes)
             )
             
         with col_btn2:
-            if st.button("☁️ Zapisz na Dysku", key=f"cloud_{orz_id}", use_container_width=True, disabled=(not pdf_bytes)):
+            if st.button("☁️ Zapisz na Dysku", key=f"cloud_{orz_id}_{wybrany_dok}", use_container_width=True, disabled=(not pdf_bytes)):
                 with st.spinner("Wysyłanie do chmury..."):
                     timestamp = datetime.datetime.now().strftime('%Y-%m-%d_%H%M')
                     safe_name = wybrany_dok.replace(' ', '_').replace('/', '_')
@@ -180,7 +190,6 @@ def render_orzeczenie_row(orz, pacjent, wizyta, firma, is_archived):
             else:
                 if st.button("📦 Do archiwum", type="primary", key=f"arch_{orz_id}", use_container_width=True):
                     zmien_status_archiwum(orz_id, "TAK")
-
 
 st.markdown("# 🖨️ Wydruki i Archiwizacja (Chmura)")
 st.write("Wybierz dokument z listy, a następnie pobierz go lokalnie lub zapisz bezpośrednio w Kartotece Pacjenta na Dysku Google.")
