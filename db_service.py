@@ -7,12 +7,8 @@ import os
 import base64
 import time
 import uuid
-
-# --- NOWE IMPORTY DLA GOOGLE DRIVE API ---
-from google.oauth2.service_account import Credentials
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseUpload
-import io
+import json
+import urllib.request
 
 # --- WYMUSZENIE POLSKIEJ STREFY CZASOWEJ W CHMURZE ---
 os.environ['TZ'] = 'Europe/Warsaw'
@@ -38,6 +34,7 @@ def get_db_connection():
 
 @st.cache_data(ttl=60, show_spinner=False)
 def get_data_as_df(worksheet_name):
+    """Pobiera dane z arkusza i zwraca jako DataFrame."""
     sh = get_db_connection()
     if not sh: return pd.DataFrame()
     try:
@@ -49,6 +46,7 @@ def get_data_as_df(worksheet_name):
         return pd.DataFrame()
 
 def update_record(worksheet_name, id_col_name, id_value, update_dict):
+    """Aktualizuje istniejący rekord w arkuszu."""
     sh = get_db_connection()
     if not sh: return False
     try:
@@ -110,36 +108,17 @@ def add_orzeczenie_to_db(id_wizyty, pesel, decyzja, data_kolejnego, uwagi, pin_l
     try:
         correct_pin = st.secrets["doctor"]["pin"]
     except KeyError:
-        return False, "Błąd konfiguracji Secrets!", None
-
+        return False, "Błąd konfiguracji Secrets!"
     if str(pin_lekarza) != str(correct_pin):
-        return False, "Błąd autoryzacji: Nieprawidłowy PIN.", None
-
+        return False, "Błąd autoryzacji: Nieprawidłowy PIN."
     data_to_hash = f"{id_wizyty}|{pesel}|{decyzja}|{data_kolejnego}|{correct_pin}"
     signature_hash = hashlib.sha256(data_to_hash.encode()).hexdigest()[:16].upper()
     full_signature = f"SIG-{signature_hash}"
-    
     ws_orzeczenia = sh.worksheet("Orzeczenia")
     id_orzeczenia = "ORZ/" + datetime.now().strftime("%Y%m%d%H%M%S")
-    
-    # Tworzymy słownik z danymi do wygenerowania PDF w panelu lekarza
-    orz_data = {
-        'ID_Orzeczenia': id_orzeczenia,
-        'ID_Wizyty': str(id_wizyty),
-        'PESEL_Pacjenta': str(pesel),
-        'Decyzja': decyzja,
-        'DataKolejnegoBadania': str(data_kolejnego),
-        'UwagiLekarza': uwagi,
-        'Podpis_Cyfrowy': full_signature,
-        'Archiwum': 'NIE'
-    }
-    
-    ws_orzeczenia.append_row([
-        id_orzeczenia, str(id_wizyty), str(pesel), decyzja, str(data_kolejnego), uwagi, full_signature, "NIE"
-    ])
-    
+    ws_orzeczenia.append_row([id_orzeczenia, str(id_wizyty), str(pesel), decyzja, str(data_kolejnego), uwagi, full_signature, "NIE"])
     update_record("Wizyty", "ID_Wizyty", id_wizyty, {"Status": "Zakończona"})
-    return True, f"Orzeczenie wystawione. Kod: {full_signature}", orz_data
+    return True, f"Orzeczenie wystawione. Kod: {full_signature}"
 
 def add_stanowisko_to_db(nip_firmy, nazwa_stanowiska, czynniki):
     sh = get_db_connection()
@@ -176,7 +155,6 @@ def dekoduj_pesel(pesel):
     except ValueError:
         return None, None
 
-# --- FUNKCJE AUTORYZACJI URZĄDZEŃ ---
 def check_trusted_device(token):
     if not token: return False
     df_auth = get_data_as_df("Autoryzacja")
@@ -190,39 +168,38 @@ def add_trusted_device(token):
     try:
         ws = sh.worksheet("Autoryzacja")
     except Exception:
-        st.error("Brak arkusza 'Autoryzacja' w Google Sheets!")
         return False
     wygasa = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
     ws.append_row([str(token), wygasa])
     st.cache_data.clear()
     return True
 
-# --- GOOGLE DRIVE UPLOAD ---
+# --- GOOGLE DRIVE UPLOAD (WERSJA Z MOSTKIEM GAS) ---
 def upload_to_google_drive(file_content, filename, folder_id):
-    """Przesyła zawartość pliku (bytes) na Dysk Google."""
+    """Przesyła plik przez Google Apps Script (mostek), omijając limity konta serwisowego."""
     try:
-        creds = Credentials.from_service_account_info(
-            st.secrets["gcp_service_account"],
-            scopes=['https://www.googleapis.com/auth/drive']
-        )
-        drive_service = build('drive', 'v3', credentials=creds)
+        # Pobranie adresu Twojego skryptu z sekretów
+        gas_url = st.secrets["doctor"]["gas_url"]
         
-        file_metadata = {
-            'name': filename,
-            'parents': [folder_id]
+        payload = {
+            "folderId": folder_id,
+            "filename": filename,
+            "fileBase64": base64.b64encode(file_content).decode('utf-8')
         }
         
-        media = MediaIoBaseUpload(io.BytesIO(file_content), mimetype='application/pdf')
+        data = json.dumps(payload).encode('utf-8')
+        req = urllib.request.Request(gas_url, data=data, headers={'Content-Type': 'application/json'})
         
-        file = drive_service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id'
-        ).execute()
-        
-        return True, file.get('id')
+        with urllib.request.urlopen(req) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            
+        if result.get("success"):
+            return True, result.get("fileId")
+        else:
+            return False, result.get("error")
+            
     except Exception as e:
-        return False, str(e)
+        return False, f"Błąd połączenia z mostkiem: {str(e)}"
 
 # --- UI STYLES ---
 @st.fragment(run_every="10s")
@@ -283,7 +260,7 @@ def apply_pro_style():
     if os.path.exists(css_file):
         with open(css_file, 'r', encoding='utf-8') as f:
             css = f.read()
-        st.markdown(f'<style>\n{css}\n</style>', unsafe_allow_html=True)
+        st.markdown(f'<style>\\n{css}\\n</style>', unsafe_allow_html=True)
     
     render_live_badge()
 
