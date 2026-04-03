@@ -3,10 +3,11 @@ import pandas as pd
 import os
 import urllib.request
 import io
+import datetime
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
-from db_service import get_data_as_df, apply_pro_style
+from db_service import get_data_as_df, apply_pro_style, upload_to_google_drive, update_record
 
 # --- IMPORTY ZEWNĘTRZNYCH SZABLONÓW ---
 try:
@@ -19,25 +20,21 @@ try:
 except ImportError as e:
     st.error(f"Błąd importu szablonów: {e}. Upewnij się, że przeniosłeś wszystkie pliki do folderu pdf_templates.")
 
+# --- TWOJE ID FOLDERU KARTOTEKI NA GOOGLE DRIVE ---
+FOLDER_KARTOTEKI_ID = "1zU0GawxmZN-LtvL6YTw3Y3tra7Ms7tgW"
+
 # --- KONFIGURACJA STRONY ---
 st.set_page_config(page_title="Wydruk Orzeczeń", page_icon="🖨️", layout="wide")
 apply_pro_style()
 
 # --- FUNKCJA ARCHIWIZACJI ---
 def zmien_status_archiwum(id_orzeczenia, nowy_status):
-    """
-    Funkcja zarządzająca statusem archiwum. 
-    Wymaga kolumny 'Archiwum' w bazie danych (tabela Orzeczenia).
-    """
-    try:
-        # Próba importu Twojej funkcji aktualizującej bazę z db_service.py
-        from db_service import update_record 
-        update_record("Orzeczenia", "ID_Orzeczenia", id_orzeczenia, {"Archiwum": nowy_status})
-        st.toast(f"Zapisano w bazie: {id_orzeczenia} -> {nowy_status}")
-    except ImportError:
-        # Fallback (działanie w pamięci RAM), jeśli nie masz jeszcze funkcji update_record
+    """Zmienia status archiwum w bazie danych i czyści cache."""
+    sukces = update_record("Orzeczenia", "ID_Orzeczenia", id_orzeczenia, {"Archiwum": nowy_status})
+    if sukces:
         st.session_state[f"arch_status_{id_orzeczenia}"] = nowy_status
-        st.toast("Przeniesiono (Działa w trybie pamięci sesji).")
+        st.cache_data.clear()
+        st.rerun()
 
 # --- BEZPIECZNE POBIERANIE PIECZĄTKI Z GOOGLE DRIVE ---
 @st.cache_resource
@@ -86,116 +83,149 @@ def load_fonts():
 font_regular, font_bold, font_italic = load_fonts()
 pieczatka_path = get_secure_signature()
 
-# --- KONTROLER / ROUTER SZABLONÓW ---
-def generate_pdf_router(typ_dokumentu, orz_data, wizyta, pacjent, firma, pieczatka_path):
-    fonts = (font_regular, font_bold, font_italic)
-    
-    if typ_dokumentu == "Orzeczenie Lekarskie":
-        return create_orzeczenie_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
-    elif typ_dokumentu == "Karta Badania (KBP)":
-        return create_kbp_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
-    elif typ_dokumentu == "Orzeczenie Sanepid":
-        return create_sanepid_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
-    elif typ_dokumentu == "Oświadczenie Kierowcy":
-        return create_kierowca_wywiad_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
-    elif typ_dokumentu == "Zaświadczenie Uczeń/Student":
-        return create_uczen_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
-    elif typ_dokumentu == "Skierowanie WCMP":
-        return create_skierowanie_wcmp_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
-    else:
-        raise ValueError("Nieznany typ dokumentu")
+st.markdown("# 🖨️ Centrum Wydruków i Archiwum")
+st.write("Generuj dokumenty PDF, wysyłaj je na Dysk Google i oznaczaj jako zakończone.")
 
-# --- FUNKCJA RYSOWANIA WIERSZA Z DOKUMENTEM ---
-def render_orzeczenie_row(orz, is_archived):
-    id_wiz = str(orz.get('ID_Wizyty', ''))
-    wiz = df_wiz[df_wiz['ID_Wizyty'].astype(str) == id_wiz].iloc[0] if not df_wiz.empty and id_wiz in df_wiz['ID_Wizyty'].astype(str).values else {}
-    
-    pesel = str(orz.get('PESEL_Pacjenta', ''))
-    pac = df_pac[df_pac['PESEL'].astype(str) == pesel].iloc[0] if not df_pac.empty and pesel in df_pac['PESEL'].astype(str).values else {"Imie": "Brak", "Nazwisko": "Danych", "PESEL": pesel}
-    
-    nip = str(wiz.get('NIP_Firmy', '0'))
-    fir = df_firmy[df_firmy['NIP'].astype(str) == nip].iloc[0] if not df_firmy.empty and nip in df_firmy['NIP'].astype(str).values else {"NazwaFirmy": "Prywatnie / Brak Firmy", "Adres": "-", "NIP": nip}
-
-    with st.container(border=True):
-        col_info, col_doc, col_dl, col_arch = st.columns([2.5, 1.5, 1, 1])
-        
-        with col_info:
-            st.markdown(f"📄 **{pac.get('Nazwisko', '')} {pac.get('Imie', '')}**")
-            st.caption(f"PESEL: {pac.get('PESEL', '')} | Firma: {fir.get('NazwaFirmy', '')}")
-        
-        with col_doc:
-            typ_dokumentu = st.selectbox(
-                "Wybierz dokument:",
-                ["Orzeczenie Lekarskie", "Karta Badania (KBP)", "Orzeczenie Sanepid", "Oświadczenie Kierowcy", "Zaświadczenie Uczeń/Student", "Skierowanie WCMP"],
-                key=f"sel_{orz.get('ID_Orzeczenia', '')}",
-                label_visibility="collapsed"
-            )
-        
-        with col_dl:
-            try:
-                pdf_bytes = generate_pdf_router(typ_dokumentu, orz, wiz, pac, fir, pieczatka_path)
-                st.download_button(
-                    label="📥 Pobierz",
-                    data=pdf_bytes,
-                    file_name=f"{typ_dokumentu.replace(' ', '_').replace('/', '_')}_{pac.get('Nazwisko', '')}.pdf",
-                    mime="application/pdf",
-                    key=f"dl_{typ_dokumentu}_{orz.get('ID_Orzeczenia', '')}",
-                    use_container_width=True
-                )
-            except Exception as e:
-                st.error(f"Błąd kompilacji: {e}")
-                
-        with col_arch:
-            if is_archived:
-                if st.button("↩️ Przywróć", key=f"restore_{orz.get('ID_Orzeczenia', '')}", use_container_width=True):
-                    zmien_status_archiwum(orz.get('ID_Orzeczenia', ''), "NIE")
-                    st.rerun()
-            else:
-                if st.button("📦 Archiwizuj", type="primary", key=f"arch_{orz.get('ID_Orzeczenia', '')}", use_container_width=True):
-                    zmien_status_archiwum(orz.get('ID_Orzeczenia', ''), "TAK")
-                    st.rerun()
-
-# --- INTERFEJS UI (STREAMLIT) ---
-st.markdown("# 🖨️ Generator Dokumentów Medycznych")
-st.write("Wybierz odpowiedni typ dokumentu do wygenerowania dla pacjenta.")
-
+# Pobieranie danych
 df_orz = get_data_as_df("Orzeczenia")
-df_wiz = get_data_as_df("Wizyty")
-df_pac = get_data_as_df("Pacjenci")
+df_wizyty = get_data_as_df("Wizyty")
+df_pacjenci = get_data_as_df("Pacjenci")
 df_firmy = get_data_as_df("Firmy")
 
+def render_orzeczenie_row(orz, pacjent, wizyta, firma):
+    orz_id = orz['ID_Orzeczenia']
+    decyzja = orz['Decyzja']
+    typ_badania = wizyta['TypBadania']
+    nazwa_firmy = firma['NazwaFirmy'] if not firma.empty else "Brak powiązanej firmy"
+    data_kolejnego = orz['DataKolejnegoBadania']
+    
+    with st.expander(f"📑 {orz_id} | {pacjent['Imie']} {pacjent['Nazwisko']} | {typ_badania} ({decyzja})"):
+        col1, col2, col3 = st.columns([1, 1.5, 1])
+        
+        with col1:
+            st.markdown(f"**Pesel:** {pacjent['PESEL']}<br>**Firma:** {nazwa_firmy}", unsafe_allow_html=True)
+            st.markdown(f"**Ważne do:** {data_kolejnego}")
+            
+            # Link do chmury (jeśli istnieje)
+            link = orz.get('Link_Drive', "")
+            if pd.notna(link) and str(link).startswith("http"):
+                st.link_button("📂 Otwórz z chmury", link, type="primary")
+
+        with col2:
+            st.markdown("#### 1. Generowanie PDF (Pobieranie)")
+            fonts = (font_regular, font_bold, font_italic)
+            # Przycisk 1: Główne Orzeczenie
+            pdf_main = create_orzeczenie_pdf(orz.to_dict(), wizyta.to_dict(), pacjent.to_dict(), firma.to_dict() if not firma.empty else {}, pieczatka_path, fonts)
+            st.download_button(
+                label="📄 Orzeczenie Lekarskie",
+                data=pdf_main,
+                file_name=f"Orzeczenie_{orz_id.replace('/','_')}.pdf",
+                mime="application/pdf",
+                key=f"dl_orz_{orz_id}"
+            )
+            # Przycisk 2: Karta Badania
+            pdf_kbp = create_kbp_pdf(orz.to_dict(), wizyta.to_dict(), pacjent.to_dict(), firma.to_dict() if not firma.empty else {}, pieczatka_path, fonts)
+            st.download_button(
+                label="📋 Karta Badania Profilaktycznego",
+                data=pdf_kbp,
+                file_name=f"KBP_{orz_id.replace('/','_')}.pdf",
+                mime="application/pdf",
+                key=f"dl_kbp_{orz_id}"
+            )
+            
+            # Przyciski dla dokumentów dodatkowych w rzędzie
+            c_dod1, c_dod2 = st.columns(2)
+            if "Sanitarno" in str(typ_badania):
+                pdf_san = create_sanepid_pdf(orz.to_dict(), wizyta.to_dict(), pacjent.to_dict(), firma.to_dict() if not firma.empty else {}, pieczatka_path, fonts)
+                c_dod1.download_button("🍏 Orzeczenie Sanepid", data=pdf_san, file_name=f"Sanepid_{orz_id.replace('/','_')}.pdf", mime="application/pdf", key=f"dl_san_{orz_id}")
+            if "Kierowca" in str(typ_badania):
+                pdf_kier = create_kierowca_wywiad_pdf(orz.to_dict(), wizyta.to_dict(), pacjent.to_dict(), firma.to_dict() if not firma.empty else {}, pieczatka_path, fonts)
+                c_dod1.download_button("🚗 Oświadczenie Kierowcy", data=pdf_kier, file_name=f"Oswiadczenie_{orz_id.replace('/','_')}.pdf", mime="application/pdf", key=f"dl_kier_{orz_id}")
+            if "Uczeń" in str(typ_badania) or "Student" in str(typ_badania):
+                pdf_ucz = create_uczen_pdf(orz.to_dict(), wizyta.to_dict(), pacjent.to_dict(), firma.to_dict() if not firma.empty else {}, pieczatka_path, fonts)
+                c_dod2.download_button("🎓 Zaświadczenie Uczeń", data=pdf_ucz, file_name=f"Uczen_{orz_id.replace('/','_')}.pdf", mime="application/pdf", key=f"dl_ucz_{orz_id}")
+            if "Odwołanie" in str(typ_badania) or "WCMP" in str(typ_badania):
+                pdf_wcmp = create_skierowanie_wcmp_pdf(orz.to_dict(), wizyta.to_dict(), pacjent.to_dict(), firma.to_dict() if not firma.empty else {}, pieczatka_path, fonts)
+                c_dod2.download_button("🏥 Skierowanie WCMP", data=pdf_wcmp, file_name=f"WCMP_{orz_id.replace('/','_')}.pdf", mime="application/pdf", key=f"dl_wcmp_{orz_id}")
+
+        with col3:
+            st.markdown("#### 2. Dysk Google i Archiwum")
+            
+            # --- SEKCJA ZAPISU DO CHMURY ---
+            if st.button("☁️ Zapisz wszystkie PDFy do Kartoteki", type="secondary", key=f"cloud_{orz_id}", use_container_width=True):
+                with st.spinner("Wysyłanie plików na Google Drive..."):
+                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d")
+                    fonts = (font_regular, font_bold, font_italic)
+                    
+                    # 1. Wysyłanie Głównego Orzeczenia
+                    up_sukces, drive_id = upload_to_google_drive(create_orzeczenie_pdf(orz.to_dict(), wizyta.to_dict(), pacjent.to_dict(), firma.to_dict() if not firma.empty else {}, pieczatka_path, fonts), f"Orzeczenie_{pacjent['Nazwisko']}_{timestamp}.pdf", FOLDER_KARTOTEKI_ID)
+                    
+                    # Zapisywanie linku do bazy, aby był dostępny w historii pacjenta
+                    if up_sukces:
+                        drive_link = f"https://drive.google.com/file/d/{drive_id}/view"
+                        update_record("Orzeczenia", "ID_Orzeczenia", orz_id, {"Link_Drive": drive_link})
+                        st.success("Wysłano Główne Orzeczenie!")
+                        
+                    # 2. Wysyłanie KBP
+                    upload_to_google_drive(create_kbp_pdf(orz.to_dict(), wizyta.to_dict(), pacjent.to_dict(), firma.to_dict() if not firma.empty else {}, pieczatka_path, fonts), f"KBP_{pacjent['Nazwisko']}_{timestamp}.pdf", FOLDER_KARTOTEKI_ID)
+                    
+                    # 3. Wysyłanie dodatkowych dokumentów (jeśli dotyczy)
+                    if "Sanitarno" in str(typ_badania):
+                        upload_to_google_drive(create_sanepid_pdf(orz.to_dict(), wizyta.to_dict(), pacjent.to_dict(), firma.to_dict() if not firma.empty else {}, pieczatka_path, fonts), f"Sanepid_{pacjent['Nazwisko']}_{timestamp}.pdf", FOLDER_KARTOTEKI_ID)
+                    if "Uczeń" in str(typ_badania) or "Student" in str(typ_badania):
+                         upload_to_google_drive(create_uczen_pdf(orz.to_dict(), wizyta.to_dict(), pacjent.to_dict(), firma.to_dict() if not firma.empty else {}, pieczatka_path, fonts), f"Uczen_{pacjent['Nazwisko']}_{timestamp}.pdf", FOLDER_KARTOTEKI_ID)
+                         
+                    st.balloons()
+                    st.success("Wszystkie dokumenty zostały bezpiecznie zapisane w kartotece pacjenta!")
+
+            st.markdown("<br>", unsafe_allow_html=True)
+            # --- SEKCJA ARCHIWIZACJI ---
+            if orz['Archiwum'] == 'TAK':
+                if st.button("⏪ Przywróć do Bieżących", key=f"btn_przywroc_{orz_id}"):
+                    zmien_status_archiwum(orz_id, "NIE")
+            else:
+                if st.button("📦 Przenieś do Archiwum", type="primary", key=f"btn_arch_{orz_id}"):
+                    zmien_status_archiwum(orz_id, "TAK")
+
+
 if not df_orz.empty:
-    # Wypełnij braki w kolumnie Archiwum domyślnym "NIE"
     if 'Archiwum' not in df_orz.columns:
         df_orz['Archiwum'] = 'NIE'
         
-    # Nałożenie nadpisań z pamięci sesji (fallback UI, zanim zrobisz zapis w db_service)
     for index, row in df_orz.iterrows():
         orz_id = row['ID_Orzeczenia']
         if f"arch_status_{orz_id}" in st.session_state:
             df_orz.at[index, 'Archiwum'] = st.session_state[f"arch_status_{orz_id}"]
 
-    # Podział na dwa widoki (DataFrame'y)
     df_aktualne = df_orz[df_orz['Archiwum'] != 'TAK']
     df_archiwum = df_orz[df_orz['Archiwum'] == 'TAK']
 
     tab_biezace, tab_archiwum = st.tabs([f"📄 Bieżące Orzeczenia ({len(df_aktualne)})", f"📦 Archiwum ({len(df_archiwum)})"])
 
-    # ZAKŁADKA 1: BIEŻĄCE
     with tab_biezace:
         if not df_aktualne.empty:
             for _, orz in df_aktualne.sort_values("ID_Orzeczenia", ascending=False).head(20).iterrows():
-                render_orzeczenie_row(orz, is_archived=False)
+                try:
+                    wizyta = df_wizyty[df_wizyty['ID_Wizyty'].astype(str) == str(orz['ID_Wizyty'])].iloc[0]
+                    pacjent = df_pacjenci[df_pacjenci['PESEL'].astype(str) == str(orz['PESEL_Pacjenta'])].iloc[0]
+                    firma = df_firmy[df_firmy['NIP'].astype(str) == str(wizyta['NIP_Firmy'])].iloc[0] if not df_firmy[df_firmy['NIP'].astype(str) == str(wizyta['NIP_Firmy'])].empty else pd.DataFrame()
+                    render_orzeczenie_row(orz, pacjent, wizyta, firma)
+                except IndexError:
+                    st.error(f"Błąd spójności danych dla orzeczenia {orz['ID_Orzeczenia']}")
         else:
-            st.info("Wszystkie orzeczenia zostały zarchiwizowane.")
+            st.info("Brak bieżących orzeczeń do wydruku. Wszystkie zostały zarchiwizowane.")
 
-    # ZAKŁADKA 2: ARCHIWUM
     with tab_archiwum:
         if not df_archiwum.empty:
             for _, orz in df_archiwum.sort_values("ID_Orzeczenia", ascending=False).head(20).iterrows():
-                render_orzeczenie_row(orz, is_archived=True)
+                 try:
+                    wizyta = df_wizyty[df_wizyty['ID_Wizyty'].astype(str) == str(orz['ID_Wizyty'])].iloc[0]
+                    pacjent = df_pacjenci[df_pacjenci['PESEL'].astype(str) == str(orz['PESEL_Pacjenta'])].iloc[0]
+                    firma = df_firmy[df_firmy['NIP'].astype(str) == str(wizyta['NIP_Firmy'])].iloc[0] if not df_firmy[df_firmy['NIP'].astype(str) == str(wizyta['NIP_Firmy'])].empty else pd.DataFrame()
+                    render_orzeczenie_row(orz, pacjent, wizyta, firma)
+                 except IndexError:
+                    pass
         else:
             st.info("Archiwum jest puste.")
-            
 else:
-    st.info("Brak wystawionych orzeczeń w bazie systemu.")
+    st.warning("Brak wystawionych orzeczeń w systemie.")
