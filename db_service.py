@@ -8,6 +8,12 @@ import base64
 import time
 import uuid
 
+# --- NOWE IMPORTY DLA GOOGLE DRIVE API ---
+from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
+import io
+
 # --- WYMUSZENIE POLSKIEJ STREFY CZASOWEJ W CHMURZE ---
 os.environ['TZ'] = 'Europe/Warsaw'
 try:
@@ -43,24 +49,15 @@ def get_data_as_df(worksheet_name):
         return pd.DataFrame()
 
 def update_record(worksheet_name, id_col_name, id_value, update_dict):
-    """
-    Uniwersalna funkcja do aktualizacji wiersza w Arkuszu Google.
-    """
     sh = get_db_connection()
     if not sh: return False
-    
     try:
         ws = sh.worksheet(worksheet_name)
         headers = ws.row_values(1)
-        
-        if id_col_name not in headers:
-            return False
+        if id_col_name not in headers: return False
         id_col_idx = headers.index(id_col_name) + 1
-        
         cell = ws.find(str(id_value), in_column=id_col_idx)
-        if not cell:
-            return False
-            
+        if not cell: return False
         updates = []
         for key, val in update_dict.items():
             if key in headers:
@@ -69,7 +66,6 @@ def update_record(worksheet_name, id_col_name, id_value, update_dict):
                     'range': gspread.utils.rowcol_to_a1(cell.row, col_idx),
                     'values': [[str(val)]]
                 })
-        
         if updates:
             ws.batch_update(updates)
             st.cache_data.clear() 
@@ -85,7 +81,6 @@ def add_patient_to_db(pesel, imie, nazwisko, data_urodzenia, telefon, adres="", 
     existing_pesels = ws.col_values(1)
     if str(pesel) in existing_pesels:
         return False, "Pacjent o takim numerze PESEL już istnieje w bazie."
-    
     ws.append_row([str(pesel), imie, nazwisko, str(data_urodzenia), telefon, adres, email, plec])
     st.cache_data.clear()
     return True, "Pacjent dodany pomyślnie."
@@ -115,10 +110,10 @@ def add_orzeczenie_to_db(id_wizyty, pesel, decyzja, data_kolejnego, uwagi, pin_l
     try:
         correct_pin = st.secrets["doctor"]["pin"]
     except KeyError:
-        return False, "Błąd konfiguracji Secrets!"
+        return False, "Błąd konfiguracji Secrets!", None
 
     if str(pin_lekarza) != str(correct_pin):
-        return False, "Błąd autoryzacji: Nieprawidłowy PIN."
+        return False, "Błąd autoryzacji: Nieprawidłowy PIN.", None
 
     data_to_hash = f"{id_wizyty}|{pesel}|{decyzja}|{data_kolejnego}|{correct_pin}"
     signature_hash = hashlib.sha256(data_to_hash.encode()).hexdigest()[:16].upper()
@@ -127,12 +122,24 @@ def add_orzeczenie_to_db(id_wizyty, pesel, decyzja, data_kolejnego, uwagi, pin_l
     ws_orzeczenia = sh.worksheet("Orzeczenia")
     id_orzeczenia = "ORZ/" + datetime.now().strftime("%Y%m%d%H%M%S")
     
+    # Tworzymy słownik z danymi do wygenerowania PDF w panelu lekarza
+    orz_data = {
+        'ID_Orzeczenia': id_orzeczenia,
+        'ID_Wizyty': str(id_wizyty),
+        'PESEL_Pacjenta': str(pesel),
+        'Decyzja': decyzja,
+        'DataKolejnegoBadania': str(data_kolejnego),
+        'UwagiLekarza': uwagi,
+        'Podpis_Cyfrowy': full_signature,
+        'Archiwum': 'NIE'
+    }
+    
     ws_orzeczenia.append_row([
         id_orzeczenia, str(id_wizyty), str(pesel), decyzja, str(data_kolejnego), uwagi, full_signature, "NIE"
     ])
     
     update_record("Wizyty", "ID_Wizyty", id_wizyty, {"Status": "Zakończona"})
-    return True, f"Orzeczenie wystawione. Kod: {full_signature}"
+    return True, f"Orzeczenie wystawione. Kod: {full_signature}", orz_data
 
 def add_stanowisko_to_db(nip_firmy, nazwa_stanowiska, czynniki):
     sh = get_db_connection()
@@ -142,59 +149,42 @@ def add_stanowisko_to_db(nip_firmy, nazwa_stanowiska, czynniki):
     return True, f"Stanowisko '{nazwa_stanowiska}' zostało dodane."
 
 def add_note_to_db(tresc):
-    """Zapisuje szybką notatkę do arkusza 'Notatki'."""
     sh = get_db_connection()
     if not sh: return False, "Błąd połączenia."
     try:
         ws = sh.worksheet("Notatki")
     except Exception:
-        return False, "Brak arkusza 'Notatki'. Dodaj zakładkę o tej nazwie w Google Sheets (kolumny: Data, Tresc)."
-    
+        return False, "Brak arkusza 'Notatki'."
     data_notatki = datetime.now().strftime("%Y-%m-%d %H:%M")
     ws.append_row([data_notatki, tresc])
     st.cache_data.clear()
     return True, "Notatka zapisana pomyślnie!"
 
 def dekoduj_pesel(pesel):
-    """Wyciąga datę urodzenia i płeć z numeru PESEL."""
-    if not pesel or len(str(pesel)) != 11 or not str(pesel).isdigit():
-        return None, None
-    
+    if not pesel or len(str(pesel)) != 11 or not str(pesel).isdigit(): return None, None
     p = str(pesel)
     plec = "Kobieta" if int(p[9]) % 2 == 0 else "Mężczyzna"
-    
     rok = int(p[0:2])
     miesiac = int(p[2:4])
     dzien = int(p[4:6])
-    
-    if 1 <= miesiac <= 12:
-        rok += 1900
-    elif 21 <= miesiac <= 32:
-        rok += 2000
-        miesiac -= 20
-    elif 81 <= miesiac <= 92:
-        rok += 1800
-        miesiac -= 80
-        
+    if 1 <= miesiac <= 12: rok += 1900
+    elif 21 <= miesiac <= 32: rok += 2000; miesiac -= 20
+    elif 81 <= miesiac <= 92: rok += 1800; miesiac -= 80
     try:
         data_urodzenia = date(rok, miesiac, dzien)
         return data_urodzenia, plec
     except ValueError:
         return None, None
 
-# --- FUNKCJE AUTORYZACJI URZĄDZEŃ (NOWE) ---
+# --- FUNKCJE AUTORYZACJI URZĄDZEŃ ---
 def check_trusted_device(token):
-    """Sprawdza, czy podany token urządzenia znajduje się w bazie zaufanych i czy nie wygasł."""
     if not token: return False
     df_auth = get_data_as_df("Autoryzacja")
     if df_auth.empty: return False
-    
-    # Przeszukujemy bazę pod kątem tokena
     is_valid = str(token) in df_auth['Token'].astype(str).values
     return is_valid
 
 def add_trusted_device(token):
-    """Dodaje nowy token zaufanego urządzenia do bazy danych (ważny przez 30 dni)."""
     sh = get_db_connection()
     if not sh: return False
     try:
@@ -202,13 +192,39 @@ def add_trusted_device(token):
     except Exception:
         st.error("Brak arkusza 'Autoryzacja' w Google Sheets!")
         return False
-    
     wygasa = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d %H:%M")
     ws.append_row([str(token), wygasa])
     st.cache_data.clear()
     return True
 
+# --- GOOGLE DRIVE UPLOAD ---
+def upload_to_google_drive(file_content, filename, folder_id):
+    """Przesyła zawartość pliku (bytes) na Dysk Google."""
+    try:
+        creds = Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"],
+            scopes=['https://www.googleapis.com/auth/drive']
+        )
+        drive_service = build('drive', 'v3', credentials=creds)
+        
+        file_metadata = {
+            'name': filename,
+            'parents': [folder_id]
+        }
+        
+        media = MediaIoBaseUpload(io.BytesIO(file_content), mimetype='application/pdf')
+        
+        file = drive_service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id'
+        ).execute()
+        
+        return True, file.get('id')
+    except Exception as e:
+        return False, str(e)
 
+# --- UI STYLES ---
 @st.fragment(run_every="10s")
 def render_live_badge():
     df_wizyty = get_data_as_df("Wizyty")
