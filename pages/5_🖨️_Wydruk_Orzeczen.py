@@ -185,7 +185,7 @@ def render_orzeczenie_row(orz, pacjent, wizyta, firma, is_archived):
                         time.sleep(1)
                         st.rerun()
                     else:
-                        st.error("Błąd wysyłania.")
+                        st.error(f"Błąd wysyłania. Szczegóły: {drive_id}")
         
         with col_arch:
             if is_archived:
