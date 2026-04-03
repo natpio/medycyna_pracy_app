@@ -78,7 +78,7 @@ font_regular, font_bold, font_italic = load_fonts()
 pieczatka_path = get_secure_signature()
 
 def generate_pdf_router(typ_dokumentu, orz_data, wizyta, pacjent, firma, pieczatka_path):
-    """Zwraca gotowe bajty pliku PDF w zależności od wybranego dokumentu."""
+    """Zwraca gotowe bajty pliku PDF, inteligentnie sprawdzając typ zwróconych danych."""
     fonts = (font_regular, font_bold, font_italic)
     pdf = None
     
@@ -90,7 +90,6 @@ def generate_pdf_router(typ_dokumentu, orz_data, wizyta, pacjent, firma, pieczat
         elif typ_dokumentu == "Orzeczenie Sanepid":
             pdf = create_sanepid_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
         elif typ_dokumentu == "Oświadczenie Kierowcy":
-            # Fallback dla dokumentów, które mogą nie przyjmować wszystkich argumentów
             try:
                 pdf = create_kierowca_wywiad_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
             except TypeError:
@@ -100,8 +99,15 @@ def generate_pdf_router(typ_dokumentu, orz_data, wizyta, pacjent, firma, pieczat
         elif typ_dokumentu == "Skierowanie WCMP":
             pdf = create_skierowanie_wcmp_pdf(orz_data, wizyta, pacjent, firma, pieczatka_path, fonts)
             
-        if pdf:
-            return pdf.output(dest='S').encode('latin-1')
+        if pdf is not None:
+            # KULOODPORNE SPRAWDZANIE TYPU:
+            if isinstance(pdf, bytes):
+                return pdf # Szablon już wyrzucił bajty, zwracamy od razu!
+            elif isinstance(pdf, str):
+                return pdf.encode('latin-1') # Szablon wyrzucił string, kodujemy do bajtów
+            else:
+                return pdf.output(dest='S').encode('latin-1') # Szablon wyrzucił obiekt roboczy FPDF, kompilujemy
+                
     except Exception as e:
         st.error(f"Wystąpił problem w szablonie: {e}")
         
@@ -115,7 +121,6 @@ def render_orzeczenie_row(orz, pacjent, wizyta, firma, is_archived):
     data_kolejnego = orz.get('DataKolejnegoBadania', '')
 
     with st.container(border=True):
-        # Sekcja górna: Informacje
         col_info, col_status = st.columns([4, 1])
         with col_info:
             st.markdown(f"#### 📄 {pacjent.get('Imie', '')} {pacjent.get('Nazwisko', '')} - {typ_badania}")
@@ -133,7 +138,6 @@ def render_orzeczenie_row(orz, pacjent, wizyta, firma, is_archived):
         
         col_sel, col_btn1, col_btn2, col_arch = st.columns([2.5, 1, 1.5, 1])
         
-        # ODKRYWAMY WSZYSTKIE DOKUMENTY (bez warunków)
         dostepne_dokumenty = [
             "Orzeczenie Lekarskie", 
             "Karta Badania (KBP)", 
@@ -151,16 +155,16 @@ def render_orzeczenie_row(orz, pacjent, wizyta, firma, is_archived):
                 label_visibility="collapsed"
             )
             
-        # Generowanie PDF w bajtach
+        # Generowanie PDF
         pdf_bytes = generate_pdf_router(wybrany_dok, orz.to_dict(), wizyta.to_dict(), pacjent.to_dict(), firma.to_dict() if not firma.empty else {}, pieczatka_path)
 
         with col_btn1:
             st.download_button(
                 label="📥 Pobierz",
-                data=pdf_bytes,
+                data=pdf_bytes if pdf_bytes else b"",
                 file_name=f"{wybrany_dok.replace(' ', '_').replace('/', '_')}_{pacjent.get('Nazwisko', '')}.pdf",
                 mime="application/pdf",
-                key=f"dl_{orz_id}_{wybrany_dok}", # Dynamiczny klucz, naprawia błąd pobierania tego samego pliku!
+                key=f"dl_{orz_id}_{wybrany_dok}",
                 use_container_width=True,
                 disabled=(not pdf_bytes)
             )
